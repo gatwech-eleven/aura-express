@@ -16,8 +16,8 @@ model Profile {
   imageUrl String? @map("image")
   email String @unique
 
-  servers Server[]
-  members Member[]
+  cohorts Cohort[]
+  cohortMembers CohortMember[]
   channels Channel[]
 
   createdAt DateTime @default(now())
@@ -57,10 +57,58 @@ model User {
   twoFactorEnabled Boolean?
   isOnline         Boolean   @default(false)
   lastSeenAt       DateTime?
-  
+
   profile       Profile?
 
+  // Better-Auth Organization relations
+  members       Member[]
+  invitations   Invitation[]
+
   @@map("users")
+}
+
+model Organization {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  name        String
+  slug        String   @unique
+  logo        String?
+  createdAt   DateTime @default(now())
+  metadata    String?
+
+  members     Member[]
+  invitations Invitation[]
+
+  @@map("organization")
+}
+
+model Member {
+  id             String   @id @default(auto()) @map("_id") @db.ObjectId
+  organizationId String   @db.ObjectId
+  userId         String   @db.ObjectId
+  role           String
+  createdAt      DateTime @default(now())
+
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("member")
+}
+
+model Invitation {
+  id             String   @id @default(auto()) @map("_id") @db.ObjectId
+  organizationId String   @db.ObjectId
+  email          String
+  role           String?
+  status         String
+  expiresAt      DateTime
+  inviterId      String   @db.ObjectId
+
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user           User         @relation(fields: [inviterId], references: [id], onDelete: Cascade)
+
+  createdAt      DateTime @default(now())
+
+  @@map("invitation")
 }
 
 model Session {
@@ -75,6 +123,8 @@ model Session {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  activeOrganizationId String?
 
   @@map("sessions")
 }
@@ -109,7 +159,7 @@ model Verification {
   @@map("verifications")
 }
 
-model Server {
+model Cohort {
   id String @id @map("_id") @default(auto()) @db.ObjectId
   name String
   imageUrl String?
@@ -118,7 +168,7 @@ model Server {
   profileId String @db.ObjectId
   profile Profile @relation(fields: [profileId], references: [id], onDelete: Cascade)
 
-  members Member[]
+  cohortMembers CohortMember[]
   channels Channel[]
 
   createdAt DateTime @default(now())
@@ -127,33 +177,33 @@ model Server {
   @@index([profileId])
 }
 
-enum MemberRole {
+enum CohortMemberRole {
   ADMIN
   MODERATOR
   GUEST
 }
 
-model Member {
+model CohortMember {
   id String @id @map("_id") @default(auto()) @db.ObjectId
-  role MemberRole @default(GUEST)
+  role CohortMemberRole @default(GUEST)
 
   profileId String @db.ObjectId
   profile Profile @relation(fields: [profileId], references: [id], onDelete: Cascade)
 
-  serverId String @db.ObjectId
-  server Server @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  cohortId String @db.ObjectId
+  cohort Cohort @relation(fields: [cohortId], references: [id], onDelete: Cascade)
 
   messages Message[]
   directMessages DirectMessage[]
 
-  conversationsInitiated Conversation[] @relation("MemberOne")
-  conversationsReceived Conversation[] @relation("MemberTwo")
+  conversationsInitiated Conversation[] @relation("CohortMemberOne")
+  conversationsReceived Conversation[] @relation("CohortMemberTwo")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([profileId])
-  @@index([serverId])
+  @@index([cohortId])
 }
 
 enum ChannelType {
@@ -170,8 +220,8 @@ model Channel {
   profileId String @db.ObjectId
   profile Profile @relation(fields: [profileId], references: [id], onDelete: Cascade)
 
-  serverId String @db.ObjectId
-  server Server @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  cohortId String @db.ObjectId
+  cohort Cohort @relation(fields: [cohortId], references: [id], onDelete: Cascade)
 
   messages Message[]
 
@@ -179,7 +229,7 @@ model Channel {
   updatedAt DateTime @updatedAt
 
   @@index([profileId])
-  @@index([serverId])
+  @@index([cohortId])
 }
 
 model Message {
@@ -188,8 +238,8 @@ model Message {
 
   fileUrl String?
 
-  memberId String @db.ObjectId
-  member Member @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  cohortMemberId String @db.ObjectId
+  cohortMember CohortMember @relation(fields: [cohortMemberId], references: [id], onDelete: Cascade)
 
   channelId String @db.ObjectId
   channel Channel @relation(fields: [channelId], references: [id], onDelete: Cascade)
@@ -210,7 +260,7 @@ model Message {
   poll Poll?
 
   @@index([channelId])
-  @@index([memberId])
+  @@index([cohortMemberId])
   @@index([parentId])
   @@index([channelId, createdAt])
 }
@@ -218,17 +268,17 @@ model Message {
 model Conversation {
   id String @id @map("_id") @default(auto()) @db.ObjectId
 
-  memberOneId String @db.ObjectId
-  memberOne Member @relation("MemberOne", fields: [memberOneId], references: [id], onDelete: Cascade)
+  cohortMemberOneId String @db.ObjectId
+  cohortMemberOne CohortMember @relation("CohortMemberOne", fields: [cohortMemberOneId], references: [id], onDelete: Cascade)
 
-  memberTwoId String @db.ObjectId
-  memberTwo Member @relation("MemberTwo", fields: [memberTwoId], references: [id], onDelete: Cascade)
+  cohortMemberTwoId String @db.ObjectId
+  cohortMemberTwo CohortMember @relation("CohortMemberTwo", fields: [cohortMemberTwoId], references: [id], onDelete: Cascade)
 
   directMessages DirectMessage[]
 
-  @@index([memberTwoId])
+  @@index([cohortMemberTwoId])
 
-  @@unique([memberOneId, memberTwoId])
+  @@unique([cohortMemberOneId, cohortMemberTwoId])
 }
 
 model DirectMessage {
@@ -236,8 +286,8 @@ model DirectMessage {
   content String
   fileUrl String?
 
-  memberId String @db.ObjectId
-  member Member @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  cohortMemberId String @db.ObjectId
+  cohortMember CohortMember @relation(fields: [cohortMemberId], references: [id], onDelete: Cascade)
 
   conversationId String @db.ObjectId
   conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
@@ -256,11 +306,11 @@ model DirectMessage {
 
   poll Poll?
 
-  @@index([memberId])
+  @@index([cohortMemberId])
   @@index([conversationId])
   @@index([parentId])
   @@index([conversationId, createdAt])
-  @@index([memberId, seen])
+  @@index([cohortMemberId, seen])
 
   isEncrypted Boolean @default(false)
 }
@@ -304,7 +354,7 @@ model Notification {
   // Context (what was mentioned/reacted to)
   messageId       String?  @db.ObjectId
   channelId       String?  @db.ObjectId
-  serverId        String?  @db.ObjectId
+  cohortId        String?  @db.ObjectId
   conversationId  String?  @db.ObjectId
   
   // Reaction specific
@@ -379,4 +429,46 @@ model PollVote {
   option    PollOption @relation(fields: [optionId], references: [id], onDelete: Cascade)
 
   @@unique([profileId, pollId])
+}
+model Organization {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  name      String
+  slug      String?
+  logo      String?
+  createdAt DateTime @default(now())
+  metadata  Json?
+
+  members     Member[]
+  invitations Invitation[]
+
+  @@unique([slug])
+  @@map("organization")
+}
+
+model Member {
+  id             String       @id @default(auto()) @map("_id") @db.ObjectId
+  organizationId String       @db.ObjectId
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  userId         String       @db.ObjectId
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role           String
+  createdAt      DateTime     @default(now())
+
+  @@unique([organizationId, userId])
+  @@map("member")
+}
+
+model Invitation {
+  id             String       @id @default(auto()) @map("_id") @db.ObjectId
+  organizationId String       @db.ObjectId
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  email          String
+  role           String?
+  status         String
+  expiresAt      DateTime
+  inviterId      String       @db.ObjectId
+  user           User         @relation(fields: [inviterId], references: [id], onDelete: Cascade)
+  createdAt      DateTime     @default(now())
+
+  @@map("invitation")
 }

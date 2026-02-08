@@ -10,7 +10,7 @@ export const createChannelMessageSchema = z.object({
     isEncrypted: z.boolean().optional(),
   }),
   query: z.object({
-    serverId: z.string().min(1),
+    cohortId: z.string().min(1),
     channelId: z.string().min(1),
   }),
 });
@@ -37,7 +37,7 @@ export const updateMessageSchema = z.object({
     content: z.string().min(1).max(5000),
   }),
   query: z.object({
-    serverId: z.string().optional(),
+    cohortId: z.string().optional(),
     channelId: z.string().optional(),
     conversationId: z.string().optional(),
   }),
@@ -51,7 +51,7 @@ export const deleteMessageSchema = z.object({
     messageId: z.string().min(1),
   }),
   query: z.object({
-    serverId: z.string().optional(),
+    cohortId: z.string().optional(),
     channelId: z.string().optional(),
     conversationId: z.string().optional(),
   }),

@@ -1,5 +1,5 @@
 import { prisma } from "@/shared/core/db";
-import { MemberService } from "@/core/servers/services";
+import { MemberService } from "@/core/cohorts/services";
 import {
   NotFoundError,
   UnauthorizedError,
@@ -13,7 +13,7 @@ export class PinService {
   public static async pinMessage(payload: {
     messageId: string;
     userId: string;
-    serverId?: string;
+    cohortId?: string;
     conversationId?: string;
   }) {
     return this.setPinStatus({ ...payload, isPinned: true });
@@ -25,7 +25,7 @@ export class PinService {
   public static async unpinMessage(payload: {
     messageId: string;
     userId: string;
-    serverId?: string;
+    cohortId?: string;
     conversationId?: string;
   }) {
     return this.setPinStatus({ ...payload, isPinned: false });
@@ -38,28 +38,28 @@ export class PinService {
     messageId: string;
     userId: string;
     isPinned: boolean;
-    serverId?: string;
+    cohortId?: string;
     conversationId?: string;
   }) {
-    const { messageId, userId, isPinned, serverId, conversationId } = payload;
+    const { messageId, userId, isPinned, cohortId, conversationId } = payload;
 
-    const member = await MemberService.resolveMember(userId, {
-      serverId,
+    const cohortMember = await MemberService.resolveMember(userId, {
+      cohortId,
       conversationId,
     });
 
-    if (!member) throw new UnauthorizedError("Member not found");
+    if (!cohortMember) throw new UnauthorizedError("CohortMember not found");
 
-    if (serverId) {
+    if (cohortId) {
       // In servers, only Admin/Moderator can pin
-      if (!["ADMIN", "MODERATOR"].includes(member.role)) {
+      if (!["ADMIN", "MODERATOR"].includes(cohortMember.role)) {
         throw new UnauthorizedError(
           "Insufficient permissions to manage pinned messages",
         );
       }
 
       const message = await prisma.message.findFirst({
-        where: { id: messageId, channel: { serverId } },
+        where: { id: messageId, channel: { cohortId } },
       });
 
       if (!message) throw new NotFoundError("Message not found in this server");
@@ -67,7 +67,7 @@ export class PinService {
       return await prisma.message.update({
         where: { id: messageId },
         data: { isPinned },
-        include: { member: { include: { profile: true } } },
+        include: { cohortMember: { include: { profile: true } } },
       });
     } else if (conversationId) {
       // In DMs, either participant can pin
@@ -81,12 +81,12 @@ export class PinService {
       return await prisma.directMessage.update({
         where: { id: messageId },
         data: { isPinned },
-        include: { member: { include: { profile: true } } },
+        include: { cohortMember: { include: { profile: true } } },
       });
     }
 
     throw new BadRequestError(
-      "Context missing (serverId or conversationId required)",
+      "Context missing (cohortId or conversationId required)",
     );
   }
 }

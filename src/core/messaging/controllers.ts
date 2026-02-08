@@ -15,11 +15,11 @@ import axios from "axios";
 export const createChannelMessage = async (req: Request, res: Response) => {
   try {
     const { content, fileUrl, isEncrypted, parentId, poll } = req.body;
-    const { serverId, channelId } = req.query;
+    const { cohortId, channelId } = req.query;
     const userId = res.locals.userId;
 
-    if (!serverId || !channelId) {
-      return ApiResponse.error(res, "Server ID or Channel ID missing", 400);
+    if (!cohortId || !channelId) {
+      return ApiResponse.error(res, "Cohort ID or Channel ID missing", 400);
     }
 
     console.time(`[CREATE_CHANNEL_MESSAGE] Total: ${userId}`);
@@ -28,7 +28,7 @@ export const createChannelMessage = async (req: Request, res: Response) => {
       fileUrl,
       isEncrypted,
       parentId,
-      serverId: serverId as string,
+      cohortId: cohortId as string,
       channelId: channelId as string,
       userId,
       poll,
@@ -39,7 +39,7 @@ export const createChannelMessage = async (req: Request, res: Response) => {
   } catch (error: any) {
     logger.error("[CREATE_CHANNEL_MESSAGE]", error);
     const status =
-      error.message === "Member not found in this server" ? 404 : 500;
+      error.message === "CohortMember not found in this server" ? 404 : 500;
     return ApiResponse.error(
       res,
       error.message || "Internal server error",
@@ -75,7 +75,7 @@ export const createDirectMessage = async (req: Request, res: Response) => {
   } catch (error: any) {
     logger.error("[CREATE_DIRECT_MESSAGE]", error);
     const status =
-      error.message === "Member not found in conversation" ? 404 : 500;
+      error.message === "CohortMember not found in conversation" ? 404 : 500;
     return ApiResponse.error(
       res,
       error.message || "Internal server error",
@@ -91,7 +91,7 @@ export const updateMessage = async (req: Request, res: Response) => {
   try {
     const { messageId } = req.params;
     const { content } = req.body;
-    const { serverId, conversationId } = req.query;
+    const { cohortId, conversationId } = req.query;
     const userId = res.locals.userId;
 
     if (!content) {
@@ -102,7 +102,7 @@ export const updateMessage = async (req: Request, res: Response) => {
       messageId,
       content,
       userId,
-      serverId: serverId as string,
+      cohortId: cohortId as string,
       conversationId: conversationId as string,
     });
 
@@ -119,13 +119,13 @@ export const updateMessage = async (req: Request, res: Response) => {
 export const deleteMessage = async (req: Request, res: Response) => {
   try {
     const { messageId } = req.params;
-    const { serverId, conversationId } = req.query;
+    const { cohortId, conversationId } = req.query;
     const userId = res.locals.userId;
 
     const deletedMessage = await MessageService.deleteMessage({
       messageId,
       userId,
-      serverId: serverId as string,
+      cohortId: cohortId as string,
       conversationId: conversationId as string,
     });
 
@@ -198,7 +198,7 @@ export const getMessages = async (req: Request, res: Response) => {
         ...(cursor && { skip: 1, cursor: { id: cursor as string } }),
         where: { channelId: channelId as string },
         include: {
-          member: { include: { profile: true } },
+          cohortMember: { include: { profile: true } },
           poll: {
             include: {
               options: {
@@ -226,7 +226,7 @@ export const getMessages = async (req: Request, res: Response) => {
         take: MESSAGES_BATCH,
         ...(cursor && { skip: 1, cursor: { id: cursor as string } }),
         where: { conversationId: conversation.id },
-        include: { member: { include: { profile: true } } },
+        include: { cohortMember: { include: { profile: true } } },
         orderBy: { createdAt: "desc" },
       });
     } else {
@@ -253,7 +253,7 @@ export const getMessages = async (req: Request, res: Response) => {
  */
 export const getConversations = async (req: Request, res: Response) => {
   try {
-    const { serverId } = req.query;
+    const { cohortId } = req.query;
     const userId = res.locals.userId;
 
     const profile = await prisma.profile.findFirst({
@@ -263,13 +263,13 @@ export const getConversations = async (req: Request, res: Response) => {
       select: {
         id: true,
         userId: true,
-        members: serverId
+        cohortMembers: cohortId
           ? {
-              where: { serverId: serverId as string },
-              select: { id: true, serverId: true },
+              where: { cohortId: cohortId as string },
+              select: { id: true, cohortId: true },
             }
           : {
-              select: { id: true, serverId: true },
+              select: { id: true, cohortId: true },
             },
       },
     });
@@ -283,17 +283,17 @@ export const getConversations = async (req: Request, res: Response) => {
 
     let memberIds: string[] = [];
 
-    if (serverId) {
-      const currentMember = profile.members.find(
-        (m) => m.serverId === (serverId as string),
+    if (cohortId) {
+      const currentMember = profile.cohortMembers.find(
+        (m) => m.cohortId === (cohortId as string),
       );
 
       if (!currentMember) {
-        return ApiResponse.error(res, "Member not found in this server", 404);
+        return ApiResponse.error(res, "CohortMember not found in this server", 404);
       }
       memberIds = [currentMember.id];
     } else {
-      memberIds = profile.members.map((m) => m.id);
+      memberIds = profile.cohortMembers.map((m) => m.id);
     }
 
     if (memberIds.length === 0) {
@@ -306,21 +306,21 @@ export const getConversations = async (req: Request, res: Response) => {
     const conversations = await prisma.conversation.findMany({
       where: {
         OR: [
-          { memberOneId: { in: memberIds } },
-          { memberTwoId: { in: memberIds } },
+          { cohortMemberOneId: { in: memberIds } },
+          { cohortMemberTwoId: { in: memberIds } },
         ],
       },
       include: {
-        memberOne: {
+        cohortMemberOne: {
           include: {
             profile: true,
-            server: true,
+            cohort: true,
           },
         },
-        memberTwo: {
+        cohortMemberTwo: {
           include: {
             profile: true,
-            server: true,
+            cohort: true,
           },
         },
         directMessages: {
@@ -367,7 +367,7 @@ export const getChannelThreadMetadata = async (req: Request, res: Response) => {
         deleted: false,
       },
       include: {
-        member: {
+        cohortMember: {
           include: {
             profile: true,
           },
@@ -380,11 +380,11 @@ export const getChannelThreadMetadata = async (req: Request, res: Response) => {
 
     const participantsMap = new Map();
     replies.forEach((reply) => {
-      if (!participantsMap.has(reply.member.profile.id)) {
-        participantsMap.set(reply.member.profile.id, {
-          id: reply.member.profile.id,
-          name: reply.member.profile.name,
-          imageUrl: reply.member.profile.imageUrl,
+      if (!participantsMap.has(reply.cohortMember.profile.id)) {
+        participantsMap.set(reply.cohortMember.profile.id, {
+          id: reply.cohortMember.profile.id,
+          name: reply.cohortMember.profile.name,
+          imageUrl: reply.cohortMember.profile.imageUrl,
         });
       }
     });
@@ -420,7 +420,7 @@ export const getDirectThreadMetadata = async (req: Request, res: Response) => {
         deleted: false,
       },
       include: {
-        member: {
+        cohortMember: {
           include: {
             profile: true,
           },
@@ -433,11 +433,11 @@ export const getDirectThreadMetadata = async (req: Request, res: Response) => {
 
     const participantsMap = new Map();
     replies.forEach((reply) => {
-      if (!participantsMap.has(reply.member.profile.id)) {
-        participantsMap.set(reply.member.profile.id, {
-          id: reply.member.profile.id,
-          name: reply.member.profile.name,
-          imageUrl: reply.member.profile.imageUrl,
+      if (!participantsMap.has(reply.cohortMember.profile.id)) {
+        participantsMap.set(reply.cohortMember.profile.id, {
+          id: reply.cohortMember.profile.id,
+          name: reply.cohortMember.profile.name,
+          imageUrl: reply.cohortMember.profile.imageUrl,
         });
       }
     });
@@ -636,20 +636,20 @@ const ReactionService = {
 export const pinMessage = async (req: Request, res: Response) => {
   try {
     const { messageId } = req.params;
-    const { serverId, conversationId } = req.query;
+    const { cohortId, conversationId } = req.query;
     const userId = res.locals.userId;
 
     const message = await PinService.pinMessage({
       messageId,
       userId,
-      serverId: serverId as string,
+      cohortId: cohortId as string,
       conversationId: conversationId as string,
     });
 
     events.emit(MESSAGE_EVENTS.UPDATED, {
       message,
-      type: serverId ? "channel" : "direct",
-      contextId: serverId
+      type: cohortId ? "channel" : "direct",
+      contextId: cohortId
         ? (message as any).channelId
         : (message as any).conversationId,
     });
@@ -667,20 +667,20 @@ export const pinMessage = async (req: Request, res: Response) => {
 export const unpinMessage = async (req: Request, res: Response) => {
   try {
     const { messageId } = req.params;
-    const { serverId, conversationId } = req.query;
+    const { cohortId, conversationId } = req.query;
     const userId = res.locals.userId;
 
     const message = await PinService.unpinMessage({
       messageId,
       userId,
-      serverId: serverId as string,
+      cohortId: cohortId as string,
       conversationId: conversationId as string,
     });
 
     events.emit(MESSAGE_EVENTS.UPDATED, {
       message,
-      type: serverId ? "channel" : "direct",
-      contextId: serverId
+      type: cohortId ? "channel" : "direct",
+      contextId: cohortId
         ? (message as any).channelId
         : (message as any).conversationId,
     });

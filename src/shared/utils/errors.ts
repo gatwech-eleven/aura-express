@@ -56,10 +56,10 @@ export class NotFoundError extends AppError {
 }
 
 /**
- * 500 Internal Server Error
+ * 500 Internal Cohort Error
  */
 export class InternalServerError extends AppError {
-  constructor(message: string = "Internal Server Error") {
+  constructor(message: string = "Internal Cohort Error") {
     super(message, 500);
   }
 }

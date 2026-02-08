@@ -5,7 +5,7 @@ const router = Router();
 
 // --- Channels ---
 const channelRouter = Router();
-channelRouter.get("/server/:serverId", controllers.getServerChannels);
+channelRouter.get("/cohort/:cohortId", controllers.getServerChannels);
 channelRouter.get("/:channelId", controllers.getChannel);
 channelRouter.post("/", controllers.createChannel);
 channelRouter.patch("/:channelId", controllers.updateChannel);
@@ -13,13 +13,13 @@ channelRouter.delete("/:channelId", controllers.deleteChannel);
 
 // --- Members ---
 const memberRouter = Router();
-memberRouter.get("/server/:serverId", controllers.getServerMembers);
-memberRouter.get("/:memberId", controllers.getMember);
-memberRouter.patch("/:memberId", controllers.updateMemberRole);
-memberRouter.delete("/:memberId", controllers.kickMember);
+memberRouter.get("/cohort/:cohortId", controllers.getServerMembers);
+memberRouter.get("/:cohortMemberId", controllers.getMember);
+memberRouter.patch("/:cohortMemberId", controllers.updateMemberRole);
+memberRouter.delete("/:cohortMemberId", controllers.kickMember);
 
 // Mount routes
 router.use("/channels", channelRouter);
-router.use("/members", memberRouter);
+router.use("/cohort-members", memberRouter);
 
 export default router;

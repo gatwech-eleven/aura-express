@@ -24,15 +24,15 @@ events.on(MESSAGE_EVENTS.CREATED, async ({ message, type, contextId }) => {
         });
 
         for (const profile of mentionedProfiles) {
-          if (profile.id !== message.member.profileId) {
+          if (profile.id !== message.cohortMember.profileId) {
             await NotificationService.createNotification({
               type: "MENTION",
               content: `mentioned you in #${channel?.name || "channel"}`,
-              senderId: message.member.profileId,
+              senderId: message.cohortMember.profileId,
               receiverId: profile.id,
               messageId: message.id,
               channelId: message.channelId,
-              serverId: channel?.serverId,
+              cohortId: channel?.cohortId,
             });
           }
         }

@@ -4,7 +4,7 @@ import { auth } from "@/core/auth/config";
 import { authMiddleware } from "@/core/auth/middleware";
 import { errorHandler } from "@/shared/middlewares/errorHandler";
 import messagingRoutes from "@/core/messaging/routes";
-import serverRoutes from "@/core/servers/routes";
+import serverRoutes from "@/core/cohorts/routes";
 import notificationRoutes from "@/core/notifications/routes";
 import userRoutes from "@/core/users/routes";
 import logger from "@/shared/core/logger";

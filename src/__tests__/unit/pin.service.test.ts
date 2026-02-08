@@ -2,7 +2,7 @@ import { vi, describe, it, expect, beforeEach } from "vitest";
 
 // Use relative paths to ensure Vitest mocks them correctly
 import { PinService } from "../../core/messaging/pin.service";
-import { MemberService } from "../../core/servers/services";
+import { MemberService } from "../../core/cohorts/services";
 import { prisma } from "../../shared/core/db";
 import { NotFoundError, UnauthorizedError } from "../../shared/utils/errors";
 
@@ -13,7 +13,7 @@ vi.mock("../../shared/core/db", () => ({
   },
 }));
 
-vi.mock("../../core/servers/services", () => ({
+vi.mock("../../core/cohorts/services", () => ({
   MemberService: { resolveMember: vi.fn() },
 }));
 
@@ -44,7 +44,7 @@ describe("PinService", () => {
       const result = await PinService.pinMessage({
         messageId: MOCK_MESSAGE_ID,
         userId: MOCK_USER_ID,
-        serverId: MOCK_SERVER_ID,
+        cohortId: MOCK_SERVER_ID,
       });
 
       expect(result.isPinned).toBe(true);
@@ -60,7 +60,7 @@ describe("PinService", () => {
         PinService.pinMessage({
           messageId: MOCK_MESSAGE_ID,
           userId: MOCK_USER_ID,
-          serverId: MOCK_SERVER_ID,
+          cohortId: MOCK_SERVER_ID,
         }),
       ).rejects.toThrow(UnauthorizedError);
     });

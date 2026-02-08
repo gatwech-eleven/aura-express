@@ -25,16 +25,16 @@ export const registerMessageHandlers = (io: Server, socket: CustomSocket) => {
       const conversation = await findOrCreateConversation(socket.user.id, to);
       if (!conversation) return;
 
-      const member =
-        conversation.memberOne.profileId === socket.user.id
-          ? conversation.memberOne
-          : conversation.memberTwo;
+      const cohortMember =
+        conversation.cohortMemberOne.profileId === socket.user.id
+          ? conversation.cohortMemberOne
+          : conversation.cohortMemberTwo;
 
       await prisma.directMessage.create({
         data: {
           content: content.content || content,
           conversationId: conversation.id,
-          memberId: member.id,
+          cohortMemberId: cohortMember.id,
         },
       });
     } catch (err) {
@@ -49,13 +49,13 @@ export const registerMessageHandlers = (io: Server, socket: CustomSocket) => {
 
       await prisma.directMessage.updateMany({
         where: {
-          member: {
+          cohortMember: {
             profileId: senderId,
           },
           conversation: {
             OR: [
-              { memberOneId: receiverId, memberTwoId: senderId },
-              { memberOneId: senderId, memberTwoId: receiverId },
+              { cohortMemberOneId: receiverId, cohortMemberTwoId: senderId },
+              { cohortMemberOneId: senderId, cohortMemberTwoId: receiverId },
             ],
           },
           seen: false,

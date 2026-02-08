@@ -1,7 +1,7 @@
 import { vi, describe, it, expect, beforeEach } from "vitest";
 import { MessageService } from "@/core/messaging/services";
 import { prisma } from "@/shared/core/db";
-import { MemberService } from "@/core/servers/services";
+import { MemberService } from "@/core/cohorts/services";
 import { events } from "@/shared/core/events";
 import { NotFoundError } from "@/shared/utils/errors";
 
@@ -23,13 +23,13 @@ vi.mock("@/shared/core/db", () => ({
       findFirst: vi.fn(),
       update: vi.fn(),
     },
-    member: {
+    cohortMember: {
       findFirst: vi.fn(),
     },
   },
 }));
 
-vi.mock("@/domains/servers/services");
+vi.mock("@/core/cohorts/services");
 
 vi.mock("@/shared/core/events", () => ({
   events: {
@@ -50,7 +50,7 @@ describe("MessageService", () => {
     it("should create a channel message successfully", async () => {
       const payload = {
         content: "Hello",
-        serverId: MOCK_SERVER_ID,
+        cohortId: MOCK_SERVER_ID,
         channelId: MOCK_CHANNEL_ID,
         userId: MOCK_USER_ID,
       };
@@ -71,13 +71,13 @@ describe("MessageService", () => {
       expect(prisma.message.create).toHaveBeenCalled();
     });
 
-    it("should throw NotFoundError if member not found", async () => {
+    it("should throw NotFoundError if cohortMember not found", async () => {
       (MemberService.resolveMember as any).mockResolvedValue(null);
 
       await expect(
         MessageService.createChannelMessage({
           content: "Hi",
-          serverId: MOCK_SERVER_ID,
+          cohortId: MOCK_SERVER_ID,
           channelId: MOCK_CHANNEL_ID,
           userId: MOCK_USER_ID,
         }),
@@ -90,7 +90,7 @@ describe("MessageService", () => {
       const mockMember = { id: MOCK_MEMBER_ID };
       const mockMessage = {
         id: MOCK_MESSAGE_ID,
-        memberId: MOCK_MEMBER_ID,
+        cohortMemberId: MOCK_MEMBER_ID,
         channelId: MOCK_CHANNEL_ID,
       };
 
@@ -105,7 +105,7 @@ describe("MessageService", () => {
         messageId: MOCK_MESSAGE_ID,
         content: "New",
         userId: MOCK_USER_ID,
-        serverId: MOCK_SERVER_ID,
+        cohortId: MOCK_SERVER_ID,
       });
 
       expect(result.content).toBe("New");

@@ -15,7 +15,7 @@ export class NotificationService {
     receiverId: string;
     messageId?: string;
     channelId?: string;
-    serverId?: string;
+    cohortId?: string;
   }) {
     const {
       type,
@@ -24,7 +24,7 @@ export class NotificationService {
       receiverId,
       messageId,
       channelId,
-      serverId,
+      cohortId,
     } = payload;
 
     const notification = await prisma.notification.create({
@@ -35,7 +35,7 @@ export class NotificationService {
         receiverId,
         messageId,
         channelId,
-        serverId,
+        cohortId,
       },
       include: {
         sender: true,

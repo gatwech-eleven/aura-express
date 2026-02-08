@@ -17,13 +17,44 @@ export const getProfileWithServers = async (userId: string) => {
   return await prisma.profile.findFirst({
     where: { userId },
     include: {
-      members: {
+      cohortMembers: {
         include: {
-          server: true,
+          cohort: true,
         },
       },
     },
   });
+};
+
+/**
+ * Update user status and return all online users
+ */
+export const updateProfile = async (
+  userId: string,
+  data: { name?: string; imageUrl?: string },
+) => {
+  try {
+    const updatedUser = await prisma.user.update({
+      where: { id: userId },
+      data: {
+        name: data.name,
+        image: data.imageUrl,
+      },
+    });
+
+    const updatedProfile = await prisma.profile.update({
+      where: { userId },
+      data: {
+        name: data.name,
+        imageUrl: data.imageUrl,
+      },
+    });
+
+    return { user: updatedUser, profile: updatedProfile };
+  } catch (error) {
+    logger.error("[UPDATE_PROFILE_SERVICE]", error);
+    throw error;
+  }
 };
 
 /**

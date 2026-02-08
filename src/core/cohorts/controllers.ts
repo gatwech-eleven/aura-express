@@ -24,16 +24,16 @@ export const getChannel = async (req: Request, res: Response) => {
  */
 export const getServerChannels = async (req: Request, res: Response) => {
   try {
-    const { serverId } = req.params;
+    const { cohortId } = req.params;
     const userId = res.locals.userId;
 
-    if (!serverId) {
-      return ApiResponse.error(res, "Server ID missing", 400);
+    if (!cohortId) {
+      return ApiResponse.error(res, "Cohort ID missing", 400);
     }
 
-    const currentMember = await prisma.member.findFirst({
+    const currentMember = await prisma.cohortMember.findFirst({
       where: {
-        serverId,
+        cohortId,
         profile: { userId },
       },
     });
@@ -43,7 +43,7 @@ export const getServerChannels = async (req: Request, res: Response) => {
     }
 
     const channels = await prisma.channel.findMany({
-      where: { serverId },
+      where: { cohortId },
       orderBy: { createdAt: "asc" },
     });
 
@@ -55,16 +55,16 @@ export const getServerChannels = async (req: Request, res: Response) => {
 };
 
 /**
- * Get member information
+ * Get cohortMember information
  */
 export const getMember = async (req: Request, res: Response) => {
   try {
-    const { memberId } = req.params;
-    const member = await prisma.member.findUnique({
-      where: { id: memberId },
+    const { cohortMemberId } = req.params;
+    const cohortMember = await prisma.cohortMember.findUnique({
+      where: { id: cohortMemberId },
       include: { profile: true },
     });
-    return ApiResponse.success(res, member);
+    return ApiResponse.success(res, cohortMember);
   } catch (error) {
     logger.error("[GET_MEMBER]", error);
     return ApiResponse.error(res, "Internal server error");
@@ -76,16 +76,16 @@ export const getMember = async (req: Request, res: Response) => {
  */
 export const getServerMembers = async (req: Request, res: Response) => {
   try {
-    const { serverId } = req.params;
+    const { cohortId } = req.params;
     const userId = res.locals.userId;
 
-    if (!serverId) {
-      return ApiResponse.error(res, "Server ID missing", 400);
+    if (!cohortId) {
+      return ApiResponse.error(res, "Cohort ID missing", 400);
     }
 
-    const currentMember = await prisma.member.findFirst({
+    const currentMember = await prisma.cohortMember.findFirst({
       where: {
-        serverId,
+        cohortId,
         profile: { userId },
       },
     });
@@ -94,8 +94,8 @@ export const getServerMembers = async (req: Request, res: Response) => {
       return ApiResponse.error(res, "Forbidden", 403);
     }
 
-    const members = await prisma.member.findMany({
-      where: { serverId },
+    const members = await prisma.cohortMember.findMany({
+      where: { cohortId },
       include: { profile: true },
       orderBy: { role: "asc" },
     });
@@ -112,21 +112,21 @@ export const getServerMembers = async (req: Request, res: Response) => {
  */
 export const createChannel = async (req: Request, res: Response) => {
   try {
-    const { serverId } = req.query;
+    const { cohortId } = req.query;
     const { name, type } = req.body;
     const userId = res.locals.userId;
 
-    if (!serverId || typeof serverId !== "string") {
-      return ApiResponse.error(res, "Server ID missing", 400);
+    if (!cohortId || typeof cohortId !== "string") {
+      return ApiResponse.error(res, "Cohort ID missing", 400);
     }
 
     if (!name) {
       return ApiResponse.error(res, "Channel name is required", 400);
     }
 
-    const currentMember = await prisma.member.findFirst({
+    const currentMember = await prisma.cohortMember.findFirst({
       where: {
-        serverId,
+        cohortId,
         profile: { userId },
         role: { in: ["ADMIN", "MODERATOR"] },
       },
@@ -136,8 +136,8 @@ export const createChannel = async (req: Request, res: Response) => {
       return ApiResponse.error(res, "Forbidden", 403);
     }
 
-    const server = await prisma.server.update({
-      where: { id: serverId },
+    const server = await prisma.cohort.update({
+      where: { id: cohortId },
       data: {
         channels: {
           create: {
@@ -149,7 +149,7 @@ export const createChannel = async (req: Request, res: Response) => {
       },
       include: {
         channels: { orderBy: { createdAt: "asc" } },
-        members: { include: { profile: true }, orderBy: { role: "asc" } },
+        cohortMembers: { include: { profile: true }, orderBy: { role: "asc" } },
       },
     });
 
@@ -166,21 +166,21 @@ export const createChannel = async (req: Request, res: Response) => {
 export const updateChannel = async (req: Request, res: Response) => {
   try {
     const { channelId } = req.params;
-    const { serverId } = req.query;
+    const { cohortId } = req.query;
     const { name, type } = req.body;
     const userId = res.locals.userId;
 
-    if (!serverId || typeof serverId !== "string") {
-      return ApiResponse.error(res, "Server ID missing", 400);
+    if (!cohortId || typeof cohortId !== "string") {
+      return ApiResponse.error(res, "Cohort ID missing", 400);
     }
 
     if (!channelId) {
       return ApiResponse.error(res, "Channel ID missing", 400);
     }
 
-    const currentMember = await prisma.member.findFirst({
+    const currentMember = await prisma.cohortMember.findFirst({
       where: {
-        serverId,
+        cohortId,
         profile: { userId },
         role: { in: ["ADMIN", "MODERATOR"] },
       },
@@ -191,7 +191,7 @@ export const updateChannel = async (req: Request, res: Response) => {
     }
 
     const channel = await prisma.channel.findFirst({
-      where: { id: channelId, serverId },
+      where: { id: channelId, cohortId },
     });
 
     if (!channel) {
@@ -202,8 +202,8 @@ export const updateChannel = async (req: Request, res: Response) => {
       return ApiResponse.error(res, "Cannot edit general channel", 400);
     }
 
-    const server = await prisma.server.update({
-      where: { id: serverId },
+    const server = await prisma.cohort.update({
+      where: { id: cohortId },
       data: {
         channels: {
           update: {
@@ -214,7 +214,7 @@ export const updateChannel = async (req: Request, res: Response) => {
       },
       include: {
         channels: { orderBy: { createdAt: "asc" } },
-        members: { include: { profile: true }, orderBy: { role: "asc" } },
+        cohortMembers: { include: { profile: true }, orderBy: { role: "asc" } },
       },
     });
 
@@ -231,20 +231,20 @@ export const updateChannel = async (req: Request, res: Response) => {
 export const deleteChannel = async (req: Request, res: Response) => {
   try {
     const { channelId } = req.params;
-    const { serverId } = req.query;
+    const { cohortId } = req.query;
     const userId = res.locals.userId;
 
-    if (!serverId || typeof serverId !== "string") {
-      return ApiResponse.error(res, "Server ID missing", 400);
+    if (!cohortId || typeof cohortId !== "string") {
+      return ApiResponse.error(res, "Cohort ID missing", 400);
     }
 
     if (!channelId) {
       return ApiResponse.error(res, "Channel ID missing", 400);
     }
 
-    const currentMember = await prisma.member.findFirst({
+    const currentMember = await prisma.cohortMember.findFirst({
       where: {
-        serverId,
+        cohortId,
         profile: { userId },
         role: { in: ["ADMIN", "MODERATOR"] },
       },
@@ -255,7 +255,7 @@ export const deleteChannel = async (req: Request, res: Response) => {
     }
 
     const channel = await prisma.channel.findFirst({
-      where: { id: channelId, serverId },
+      where: { id: channelId, cohortId },
     });
 
     if (!channel) {
@@ -266,8 +266,8 @@ export const deleteChannel = async (req: Request, res: Response) => {
       return ApiResponse.error(res, "Cannot delete general channel", 400);
     }
 
-    const server = await prisma.server.update({
-      where: { id: serverId },
+    const server = await prisma.cohort.update({
+      where: { id: cohortId },
       data: {
         channels: {
           delete: { id: channelId },
@@ -275,7 +275,7 @@ export const deleteChannel = async (req: Request, res: Response) => {
       },
       include: {
         channels: { orderBy: { createdAt: "asc" } },
-        members: { include: { profile: true }, orderBy: { role: "asc" } },
+        cohortMembers: { include: { profile: true }, orderBy: { role: "asc" } },
       },
     });
 
@@ -287,26 +287,26 @@ export const deleteChannel = async (req: Request, res: Response) => {
 };
 
 /**
- * Update member role
+ * Update cohortMember role
  */
 export const updateMemberRole = async (req: Request, res: Response) => {
   try {
-    const { memberId } = req.params;
-    const { serverId } = req.query;
+    const { cohortMemberId } = req.params;
+    const { cohortId } = req.query;
     const { role } = req.body;
     const userId = res.locals.userId;
 
-    if (!serverId || typeof serverId !== "string") {
-      return ApiResponse.error(res, "Server ID missing", 400);
+    if (!cohortId || typeof cohortId !== "string") {
+      return ApiResponse.error(res, "Cohort ID missing", 400);
     }
 
-    if (!memberId) {
-      return ApiResponse.error(res, "Member ID missing", 400);
+    if (!cohortMemberId) {
+      return ApiResponse.error(res, "CohortMember ID missing", 400);
     }
 
-    const currentMember = await prisma.member.findFirst({
+    const currentMember = await prisma.cohortMember.findFirst({
       where: {
-        serverId,
+        cohortId,
         profile: { userId },
         role: "ADMIN",
       },
@@ -316,19 +316,19 @@ export const updateMemberRole = async (req: Request, res: Response) => {
       return ApiResponse.error(res, "Forbidden", 403);
     }
 
-    const server = await prisma.server.update({
-      where: { id: serverId },
+    const server = await prisma.cohort.update({
+      where: { id: cohortId },
       data: {
-        members: {
+        cohortMembers: {
           update: {
-            where: { id: memberId },
+            where: { id: cohortMemberId },
             data: { role },
           },
         },
       },
       include: {
         channels: { orderBy: { createdAt: "asc" } },
-        members: { include: { profile: true }, orderBy: { role: "asc" } },
+        cohortMembers: { include: { profile: true }, orderBy: { role: "asc" } },
       },
     });
 
@@ -340,25 +340,25 @@ export const updateMemberRole = async (req: Request, res: Response) => {
 };
 
 /**
- * Kick member from server
+ * Kick cohortMember from server
  */
 export const kickMember = async (req: Request, res: Response) => {
   try {
-    const { memberId } = req.params;
-    const { serverId } = req.query;
+    const { cohortMemberId } = req.params;
+    const { cohortId } = req.query;
     const userId = res.locals.userId;
 
-    if (!serverId || typeof serverId !== "string") {
-      return ApiResponse.error(res, "Server ID missing", 400);
+    if (!cohortId || typeof cohortId !== "string") {
+      return ApiResponse.error(res, "Cohort ID missing", 400);
     }
 
-    if (!memberId) {
-      return ApiResponse.error(res, "Member ID missing", 400);
+    if (!cohortMemberId) {
+      return ApiResponse.error(res, "CohortMember ID missing", 400);
     }
 
-    const currentMember = await prisma.member.findFirst({
+    const currentMember = await prisma.cohortMember.findFirst({
       where: {
-        serverId,
+        cohortId,
         profile: { userId },
         role: "ADMIN",
       },
@@ -368,16 +368,16 @@ export const kickMember = async (req: Request, res: Response) => {
       return ApiResponse.error(res, "Forbidden", 403);
     }
 
-    const server = await prisma.server.update({
-      where: { id: serverId },
+    const server = await prisma.cohort.update({
+      where: { id: cohortId },
       data: {
-        members: {
-          delete: { id: memberId },
+        cohortMembers: {
+          delete: { id: cohortMemberId },
         },
       },
       include: {
         channels: { orderBy: { createdAt: "asc" } },
-        members: { include: { profile: true }, orderBy: { role: "asc" } },
+        cohortMembers: { include: { profile: true }, orderBy: { role: "asc" } },
       },
     });
 

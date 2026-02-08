@@ -10,7 +10,7 @@ import {
   NotFoundError,
   UnauthorizedError,
 } from "@/shared/utils/errors";
-import { MemberService } from "@/core/servers/services";
+import { MemberService } from "@/core/cohorts/services";
 import { getProfileByUserId } from "@/core/users/services";
 import { PollService } from "./poll.service";
 
@@ -26,7 +26,7 @@ export class MessageService {
     fileUrl?: string;
     isEncrypted?: boolean;
     parentId?: string;
-    serverId: string;
+    cohortId: string;
     channelId: string;
     userId: string;
     poll?: {
@@ -40,16 +40,16 @@ export class MessageService {
       fileUrl,
       isEncrypted,
       parentId,
-      serverId,
+      cohortId,
       channelId,
       userId,
       poll,
     } = payload;
 
-    const member = await MemberService.resolveMember(userId, { serverId });
+    const cohortMember = await MemberService.resolveMember(userId, { cohortId });
 
-    if (!member) {
-      throw new NotFoundError("Member not found in this server");
+    if (!cohortMember) {
+      throw new NotFoundError("CohortMember not found in this server");
     }
 
     console.time(
@@ -60,7 +60,7 @@ export class MessageService {
         content,
         fileUrl: fileUrl || null,
         channelId,
-        memberId: member.id,
+        cohortMemberId: cohortMember.id,
         isEncrypted: !!isEncrypted,
         parentId: parentId || null,
         ...(poll && {
@@ -76,7 +76,7 @@ export class MessageService {
         }),
       },
       include: {
-        member: {
+        cohortMember: {
           include: {
             profile: true,
           },
@@ -140,12 +140,12 @@ export class MessageService {
       poll,
     } = payload;
 
-    const member = await MemberService.resolveMember(userId, {
+    const cohortMember = await MemberService.resolveMember(userId, {
       conversationId,
     });
 
-    if (!member) {
-      throw new NotFoundError("Member not found in conversation");
+    if (!cohortMember) {
+      throw new NotFoundError("CohortMember not found in conversation");
     }
 
     const message = await prisma.directMessage.create({
@@ -153,7 +153,7 @@ export class MessageService {
         content,
         fileUrl: fileUrl || null,
         conversationId,
-        memberId: member.id,
+        cohortMemberId: cohortMember.id,
         isEncrypted: !!isEncrypted,
         parentId: parentId || null,
         ...(poll && {
@@ -169,7 +169,7 @@ export class MessageService {
         }),
       },
       include: {
-        member: {
+        cohortMember: {
           include: {
             profile: true,
           },
@@ -204,20 +204,20 @@ export class MessageService {
     messageId: string;
     content: string;
     userId: string;
-    serverId?: string;
+    cohortId?: string;
     conversationId?: string;
   }) {
-    const { messageId, content, userId, serverId, conversationId } = payload;
+    const { messageId, content, userId, cohortId, conversationId } = payload;
 
-    const member = await MemberService.resolveMember(userId, {
-      serverId,
+    const cohortMember = await MemberService.resolveMember(userId, {
+      cohortId,
       conversationId,
     });
-    if (!member) throw new UnauthorizedError("Member not found");
+    if (!cohortMember) throw new UnauthorizedError("CohortMember not found");
 
-    if (serverId) {
+    if (cohortId) {
       const message = await prisma.message.findFirst({
-        where: { id: messageId, memberId: member.id, deleted: false },
+        where: { id: messageId, cohortMemberId: cohortMember.id, deleted: false },
       });
 
       if (!message)
@@ -226,7 +226,7 @@ export class MessageService {
       const updated = await prisma.message.update({
         where: { id: messageId },
         data: { content },
-        include: { member: { include: { profile: true } } },
+        include: { cohortMember: { include: { profile: true } } },
       });
 
       events.emit(MESSAGE_EVENTS.UPDATED, {
@@ -237,7 +237,7 @@ export class MessageService {
       return updated;
     } else if (conversationId) {
       const message = await prisma.directMessage.findFirst({
-        where: { id: messageId, memberId: member.id, deleted: false },
+        where: { id: messageId, cohortMemberId: cohortMember.id, deleted: false },
       });
 
       if (!message)
@@ -246,7 +246,7 @@ export class MessageService {
       const updated = await prisma.directMessage.update({
         where: { id: messageId },
         data: { content },
-        include: { member: { include: { profile: true } } },
+        include: { cohortMember: { include: { profile: true } } },
       });
 
       events.emit(MESSAGE_EVENTS.UPDATED, {
@@ -258,7 +258,7 @@ export class MessageService {
     }
 
     throw new BadRequestError(
-      "Context missing (serverId or conversationId required)",
+      "Context missing (cohortId or conversationId required)",
     );
   }
 
@@ -268,29 +268,29 @@ export class MessageService {
   public static async deleteMessage(payload: {
     messageId: string;
     userId: string;
-    serverId?: string;
+    cohortId?: string;
     conversationId?: string;
   }) {
-    const { messageId, userId, serverId, conversationId } = payload;
+    const { messageId, userId, cohortId, conversationId } = payload;
 
-    const member = await MemberService.resolveMember(userId, {
-      serverId,
+    const cohortMember = await MemberService.resolveMember(userId, {
+      cohortId,
       conversationId,
     });
-    if (!member) throw new UnauthorizedError("Member not found");
+    if (!cohortMember) throw new UnauthorizedError("CohortMember not found");
 
-    if (serverId) {
+    if (cohortId) {
       const message = await prisma.message.findFirst({
         where: { id: messageId },
-        include: { member: true },
+        include: { cohortMember: true },
       });
 
       if (!message || message.deleted)
         throw new NotFoundError("Message not found");
 
       const canDelete =
-        message.memberId === member.id ||
-        ["ADMIN", "MODERATOR"].includes(member.role);
+        message.cohortMemberId === cohortMember.id ||
+        ["ADMIN", "MODERATOR"].includes(cohortMember.role);
       if (!canDelete)
         throw new UnauthorizedError("Unauthorized to delete this message");
 
@@ -301,7 +301,7 @@ export class MessageService {
           content: "This message has been deleted.",
           deleted: true,
         },
-        include: { member: { include: { profile: true } } },
+        include: { cohortMember: { include: { profile: true } } },
       });
 
       events.emit(MESSAGE_EVENTS.UPDATED, {
@@ -317,7 +317,7 @@ export class MessageService {
 
       if (!message || message.deleted)
         throw new NotFoundError("Message not found");
-      if (message.memberId !== member.id)
+      if (message.cohortMemberId !== cohortMember.id)
         throw new UnauthorizedError("Unauthorized to delete this message");
 
       const deleted = await prisma.directMessage.update({
@@ -327,7 +327,7 @@ export class MessageService {
           content: "This message has been deleted.",
           deleted: true,
         },
-        include: { member: { include: { profile: true } } },
+        include: { cohortMember: { include: { profile: true } } },
       });
 
       events.emit(MESSAGE_EVENTS.UPDATED, {
@@ -339,7 +339,7 @@ export class MessageService {
     }
 
     throw new BadRequestError(
-      "Context missing (serverId or conversationId required)",
+      "Context missing (cohortId or conversationId required)",
     );
   }
 }
@@ -348,34 +348,34 @@ export class MessageService {
  * Find or create a conversation between two members
  */
 export const findOrCreateConversation = async (
-  memberOneId: string,
-  memberTwoId: string,
+  cohortMemberOneId: string,
+  cohortMemberTwoId: string,
 ) => {
-  let conversation = await findConversation(memberOneId, memberTwoId);
+  let conversation = await findConversation(cohortMemberOneId, cohortMemberTwoId);
 
   if (!conversation) {
-    conversation = await createNewConversation(memberOneId, memberTwoId);
+    conversation = await createNewConversation(cohortMemberOneId, cohortMemberTwoId);
   }
 
   return conversation;
 };
 
-const findConversation = async (memberOneId: string, memberTwoId: string) => {
+const findConversation = async (cohortMemberOneId: string, cohortMemberTwoId: string) => {
   try {
     return await prisma.conversation.findFirst({
       where: {
         OR: [
-          { AND: [{ memberOneId }, { memberTwoId }] },
-          { AND: [{ memberOneId: memberTwoId }, { memberTwoId: memberOneId }] },
+          { AND: [{ cohortMemberOneId }, { cohortMemberTwoId }] },
+          { AND: [{ cohortMemberOneId: cohortMemberTwoId }, { cohortMemberTwoId: cohortMemberOneId }] },
         ],
       },
       include: {
-        memberOne: {
+        cohortMemberOne: {
           include: {
             profile: true,
           },
         },
-        memberTwo: {
+        cohortMemberTwo: {
           include: {
             profile: true,
           },
@@ -389,22 +389,22 @@ const findConversation = async (memberOneId: string, memberTwoId: string) => {
 };
 
 const createNewConversation = async (
-  memberOneId: string,
-  memberTwoId: string,
+  cohortMemberOneId: string,
+  cohortMemberTwoId: string,
 ) => {
   try {
     return await prisma.conversation.create({
       data: {
-        memberOneId,
-        memberTwoId,
+        cohortMemberOneId,
+        cohortMemberTwoId,
       },
       include: {
-        memberOne: {
+        cohortMemberOne: {
           include: {
             profile: true,
           },
         },
-        memberTwo: {
+        cohortMemberTwo: {
           include: {
             profile: true,
           },
@@ -440,17 +440,17 @@ export class ReactionService {
     if (messageId) {
       const message = await prisma.message.findUnique({
         where: { id: messageId },
-        include: { member: { include: { profile: true } } },
+        include: { cohortMember: { include: { profile: true } } },
       });
-      authorProfileId = message?.member.profile.id || null;
-      authorUserId = message?.member.profile.userId || null;
+      authorProfileId = message?.cohortMember.profile.id || null;
+      authorUserId = message?.cohortMember.profile.userId || null;
     } else if (directMessageId) {
       const directMessage = await prisma.directMessage.findUnique({
         where: { id: directMessageId },
-        include: { member: { include: { profile: true } } },
+        include: { cohortMember: { include: { profile: true } } },
       });
-      authorProfileId = directMessage?.member.profile.id || null;
-      authorUserId = directMessage?.member.profile.userId || null;
+      authorProfileId = directMessage?.cohortMember.profile.id || null;
+      authorUserId = directMessage?.cohortMember.profile.userId || null;
     }
 
     const existingReaction = await prisma.reaction.findFirst({
