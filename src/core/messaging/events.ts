@@ -1,4 +1,9 @@
-import { events, MESSAGE_EVENTS, REACTION_EVENTS } from "@/shared/core/events";
+import {
+  events,
+  MESSAGE_EVENTS,
+  REACTION_EVENTS,
+  POLL_EVENTS,
+} from "@/shared/core/events";
 import { socketService } from "@/shared/core/socket";
 import { NotificationService } from "@/core/notifications/services";
 import { extractMentionedUserIds } from "@/shared/utils/mention-parser";
@@ -82,4 +87,63 @@ events.on(
 events.on(REACTION_EVENTS.REMOVED, async ({ reaction }) => {
   const roomId = reaction.messageId || reaction.directMessageId;
   socketService.emit("reaction:removed", { id: reaction.id }, roomId);
+});
+
+/**
+ * Handle poll voted event
+ */
+events.on(POLL_EVENTS.VOTED, async ({ poll }) => {
+  try {
+    const isChannel = !!poll.messageId;
+    const messageId = poll.messageId || poll.directMessageId;
+
+    if (!messageId) return;
+
+    let fullMessage;
+    if (isChannel) {
+      fullMessage = await prisma.message.findUnique({
+        where: { id: messageId },
+        include: {
+          cohortMember: { include: { profile: true } },
+          poll: {
+            include: {
+              options: {
+                include: {
+                  votes: true,
+                  _count: { select: { votes: true } },
+                },
+              },
+            },
+          },
+        },
+      });
+    } else {
+      fullMessage = await prisma.directMessage.findUnique({
+        where: { id: messageId },
+        include: {
+          cohortMember: { include: { profile: true } },
+          poll: {
+            include: {
+              options: {
+                include: {
+                  votes: true,
+                  _count: { select: { votes: true } },
+                },
+              },
+            },
+          },
+        },
+      });
+    }
+
+    if (fullMessage) {
+      const contextId = isChannel
+        ? (fullMessage as any).channelId
+        : (fullMessage as any).conversationId;
+
+      socketService.emitChatMessage(contextId, "messages:update", fullMessage);
+    }
+  } catch (error) {
+    logger.error("[MessageHandler] Error handling poll:voted", error);
+  }
 });

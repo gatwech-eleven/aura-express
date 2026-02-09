@@ -226,7 +226,19 @@ export const getMessages = async (req: Request, res: Response) => {
         take: MESSAGES_BATCH,
         ...(cursor && { skip: 1, cursor: { id: cursor as string } }),
         where: { conversationId: conversation.id },
-        include: { cohortMember: { include: { profile: true } } },
+        include: {
+          cohortMember: { include: { profile: true } },
+          poll: {
+            include: {
+              options: {
+                include: {
+                  votes: true,
+                  _count: { select: { votes: true } },
+                },
+              },
+            },
+          },
+        },
         orderBy: { createdAt: "desc" },
       });
     } else {

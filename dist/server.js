@@ -1053,7 +1053,19 @@ var PinService = class {
       return await prisma.message.update({
         where: { id: messageId },
         data: { isPinned },
-        include: { cohortMember: { include: { profile: true } } }
+        include: {
+          cohortMember: { include: { profile: true } },
+          poll: {
+            include: {
+              options: {
+                include: {
+                  votes: true,
+                  _count: { select: { votes: true } }
+                }
+              }
+            }
+          }
+        }
       });
     } else if (conversationId) {
       const message = await prisma.directMessage.findFirst({
@@ -1064,7 +1076,19 @@ var PinService = class {
       return await prisma.directMessage.update({
         where: { id: messageId },
         data: { isPinned },
-        include: { cohortMember: { include: { profile: true } } }
+        include: {
+          cohortMember: { include: { profile: true } },
+          poll: {
+            include: {
+              options: {
+                include: {
+                  votes: true,
+                  _count: { select: { votes: true } }
+                }
+              }
+            }
+          }
+        }
       });
     }
     throw new BadRequestError(
@@ -1321,7 +1345,19 @@ var getMessages = async (req, res) => {
         take: MESSAGES_BATCH,
         ...cursor && { skip: 1, cursor: { id: cursor } },
         where: { conversationId: conversation.id },
-        include: { cohortMember: { include: { profile: true } } },
+        include: {
+          cohortMember: { include: { profile: true } },
+          poll: {
+            include: {
+              options: {
+                include: {
+                  votes: true,
+                  _count: { select: { votes: true } }
+                }
+              }
+            }
+          }
+        },
         orderBy: { createdAt: "desc" }
       });
     } else {
@@ -1371,7 +1407,11 @@ var getConversations = async (req, res) => {
         (m) => m.cohortId === cohortId
       );
       if (!currentMember) {
-        return ApiResponse.error(res, "CohortMember not found in this server", 404);
+        return ApiResponse.error(
+          res,
+          "CohortMember not found in this server",
+          404
+        );
       }
       memberIds = [currentMember.id];
     } else {
@@ -1629,7 +1669,9 @@ var getLinkPreview = async (req, res) => {
     );
   } catch (error) {
     logger_default.error(`[LinkPreview] Error: ${error.message}`);
-    return ApiResponse.error(res, "Failed to fetch link preview");
+    const status = error.response?.status || 500;
+    const errorMessage = error.response?.data?.error?.message || error.message || "Failed to fetch link preview";
+    return ApiResponse.error(res, errorMessage, status);
   }
 };
 var ReactionService2 = {
@@ -2693,6 +2735,55 @@ events.on(
 events.on(REACTION_EVENTS.REMOVED, async ({ reaction }) => {
   const roomId = reaction.messageId || reaction.directMessageId;
   socketService.emit("reaction:removed", { id: reaction.id }, roomId);
+});
+events.on(POLL_EVENTS.VOTED, async ({ poll }) => {
+  try {
+    const isChannel = !!poll.messageId;
+    const messageId = poll.messageId || poll.directMessageId;
+    if (!messageId) return;
+    let fullMessage;
+    if (isChannel) {
+      fullMessage = await prisma.message.findUnique({
+        where: { id: messageId },
+        include: {
+          cohortMember: { include: { profile: true } },
+          poll: {
+            include: {
+              options: {
+                include: {
+                  votes: true,
+                  _count: { select: { votes: true } }
+                }
+              }
+            }
+          }
+        }
+      });
+    } else {
+      fullMessage = await prisma.directMessage.findUnique({
+        where: { id: messageId },
+        include: {
+          cohortMember: { include: { profile: true } },
+          poll: {
+            include: {
+              options: {
+                include: {
+                  votes: true,
+                  _count: { select: { votes: true } }
+                }
+              }
+            }
+          }
+        }
+      });
+    }
+    if (fullMessage) {
+      const contextId = isChannel ? fullMessage.channelId : fullMessage.conversationId;
+      socketService.emitChatMessage(contextId, "messages:update", fullMessage);
+    }
+  } catch (error) {
+    logger_default.error("[MessageHandler] Error handling poll:voted", error);
+  }
 });
 
 // src/socket/index.ts

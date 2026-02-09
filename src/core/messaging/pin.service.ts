@@ -67,7 +67,19 @@ export class PinService {
       return await prisma.message.update({
         where: { id: messageId },
         data: { isPinned },
-        include: { cohortMember: { include: { profile: true } } },
+        include: {
+          cohortMember: { include: { profile: true } },
+          poll: {
+            include: {
+              options: {
+                include: {
+                  votes: true,
+                  _count: { select: { votes: true } },
+                },
+              },
+            },
+          },
+        },
       });
     } else if (conversationId) {
       // In DMs, either participant can pin
@@ -81,7 +93,19 @@ export class PinService {
       return await prisma.directMessage.update({
         where: { id: messageId },
         data: { isPinned },
-        include: { cohortMember: { include: { profile: true } } },
+        include: {
+          cohortMember: { include: { profile: true } },
+          poll: {
+            include: {
+              options: {
+                include: {
+                  votes: true,
+                  _count: { select: { votes: true } },
+                },
+              },
+            },
+          },
+        },
       });
     }
 
