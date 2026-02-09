@@ -46,7 +46,9 @@ export class MessageService {
       poll,
     } = payload;
 
-    const cohortMember = await MemberService.resolveMember(userId, { cohortId });
+    const cohortMember = await MemberService.resolveMember(userId, {
+      cohortId,
+    });
 
     if (!cohortMember) {
       throw new NotFoundError("CohortMember not found in this server");
@@ -217,7 +219,11 @@ export class MessageService {
 
     if (cohortId) {
       const message = await prisma.message.findFirst({
-        where: { id: messageId, cohortMemberId: cohortMember.id, deleted: false },
+        where: {
+          id: messageId,
+          cohortMemberId: cohortMember.id,
+          deleted: false,
+        },
       });
 
       if (!message)
@@ -237,7 +243,11 @@ export class MessageService {
       return updated;
     } else if (conversationId) {
       const message = await prisma.directMessage.findFirst({
-        where: { id: messageId, cohortMemberId: cohortMember.id, deleted: false },
+        where: {
+          id: messageId,
+          cohortMemberId: cohortMember.id,
+          deleted: false,
+        },
       });
 
       if (!message)
@@ -351,22 +361,36 @@ export const findOrCreateConversation = async (
   cohortMemberOneId: string,
   cohortMemberTwoId: string,
 ) => {
-  let conversation = await findConversation(cohortMemberOneId, cohortMemberTwoId);
+  let conversation = await findConversation(
+    cohortMemberOneId,
+    cohortMemberTwoId,
+  );
 
   if (!conversation) {
-    conversation = await createNewConversation(cohortMemberOneId, cohortMemberTwoId);
+    conversation = await createNewConversation(
+      cohortMemberOneId,
+      cohortMemberTwoId,
+    );
   }
 
   return conversation;
 };
 
-const findConversation = async (cohortMemberOneId: string, cohortMemberTwoId: string) => {
+const findConversation = async (
+  cohortMemberOneId: string,
+  cohortMemberTwoId: string,
+) => {
   try {
     return await prisma.conversation.findFirst({
       where: {
         OR: [
           { AND: [{ cohortMemberOneId }, { cohortMemberTwoId }] },
-          { AND: [{ cohortMemberOneId: cohortMemberTwoId }, { cohortMemberTwoId: cohortMemberOneId }] },
+          {
+            AND: [
+              { cohortMemberOneId: cohortMemberTwoId },
+              { cohortMemberTwoId: cohortMemberOneId },
+            ],
+          },
         ],
       },
       include: {

@@ -233,7 +233,9 @@ var init_services3 = __esm({
           userId,
           poll
         } = payload;
-        const cohortMember = await MemberService.resolveMember(userId, { cohortId });
+        const cohortMember = await MemberService.resolveMember(userId, {
+          cohortId
+        });
         if (!cohortMember) {
           throw new NotFoundError("CohortMember not found in this server");
         }
@@ -374,7 +376,11 @@ var init_services3 = __esm({
         if (!cohortMember) throw new UnauthorizedError("CohortMember not found");
         if (cohortId) {
           const message = await prisma.message.findFirst({
-            where: { id: messageId, cohortMemberId: cohortMember.id, deleted: false }
+            where: {
+              id: messageId,
+              cohortMemberId: cohortMember.id,
+              deleted: false
+            }
           });
           if (!message)
             throw new NotFoundError("Message not found or unauthorized");
@@ -391,7 +397,11 @@ var init_services3 = __esm({
           return updated;
         } else if (conversationId) {
           const message = await prisma.directMessage.findFirst({
-            where: { id: messageId, cohortMemberId: cohortMember.id, deleted: false }
+            where: {
+              id: messageId,
+              cohortMemberId: cohortMember.id,
+              deleted: false
+            }
           });
           if (!message)
             throw new NotFoundError("Message not found or unauthorized");
@@ -476,9 +486,15 @@ var init_services3 = __esm({
       }
     };
     findOrCreateConversation = async (cohortMemberOneId, cohortMemberTwoId) => {
-      let conversation = await findConversation(cohortMemberOneId, cohortMemberTwoId);
+      let conversation = await findConversation(
+        cohortMemberOneId,
+        cohortMemberTwoId
+      );
       if (!conversation) {
-        conversation = await createNewConversation(cohortMemberOneId, cohortMemberTwoId);
+        conversation = await createNewConversation(
+          cohortMemberOneId,
+          cohortMemberTwoId
+        );
       }
       return conversation;
     };
@@ -488,7 +504,12 @@ var init_services3 = __esm({
           where: {
             OR: [
               { AND: [{ cohortMemberOneId }, { cohortMemberTwoId }] },
-              { AND: [{ cohortMemberOneId: cohortMemberTwoId }, { cohortMemberTwoId: cohortMemberOneId }] }
+              {
+                AND: [
+                  { cohortMemberOneId: cohortMemberTwoId },
+                  { cohortMemberTwoId: cohortMemberOneId }
+                ]
+              }
             ]
           },
           include: {
