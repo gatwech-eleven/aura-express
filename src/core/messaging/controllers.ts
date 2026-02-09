@@ -289,7 +289,11 @@ export const getConversations = async (req: Request, res: Response) => {
       );
 
       if (!currentMember) {
-        return ApiResponse.error(res, "CohortMember not found in this server", 404);
+        return ApiResponse.error(
+          res,
+          "CohortMember not found in this server",
+          404,
+        );
       }
       memberIds = [currentMember.id];
     } else {
@@ -613,7 +617,12 @@ export const getLinkPreview = async (req: Request, res: Response) => {
     );
   } catch (error: any) {
     logger.error(`[LinkPreview] Error: ${error.message}`);
-    return ApiResponse.error(res, "Failed to fetch link preview");
+    const status = error.response?.status || 500;
+    const errorMessage =
+      error.response?.data?.error?.message ||
+      error.message ||
+      "Failed to fetch link preview";
+    return ApiResponse.error(res, errorMessage, status);
   }
 };
 
