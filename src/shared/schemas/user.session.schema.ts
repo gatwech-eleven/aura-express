@@ -1,12 +1,8 @@
-import { object, string } from "zod";
+import { z } from "zod";
 
-export const createSessionSchema = object({
-  body: object({
-    email: string({
-      required_error: "Email is required",
-    }),
-    password: string({
-      required_error: "Password is required",
-    }),
+export const userSessionSchema = z.object({
+  body: z.object({
+    email: z.string({ message: "Email is required" }).email("Invalid email"),
+    password: z.string({ message: "Password is required" }),
   }),
 });

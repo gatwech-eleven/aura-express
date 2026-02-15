@@ -181,7 +181,12 @@ var init_services2 = __esm({
           where: { userId },
           data: {
             name: data.name,
-            imageUrl: data.imageUrl
+            imageUrl: data.imageUrl,
+            publicKey: data.publicKey,
+            encryptedPrivateKey: data.encryptedPrivateKey,
+            privateKeyIv: data.privateKeyIv,
+            privateKeySalt: data.privateKeySalt,
+            bio: data.bio
           }
         });
         return { user: updatedUser, profile: updatedProfile };
@@ -1029,7 +1034,7 @@ var errorHandler = (err, req, res, next) => {
 // src/core/messaging/routes.ts
 import { Router } from "express";
 
-// src/core/messaging/controllers.ts
+// src/core/messaging/controllers/message.controller.ts
 init_db();
 init_logger();
 init_services3();
@@ -1118,106 +1123,8 @@ var PinService = class {
   }
 };
 
-// src/core/messaging/poll.service.ts
-init_db();
-init_services2();
-init_errors();
-var PollService = class {
-  /**
-   * Create a new poll attached to a message
-   */
-  static async createPoll(payload) {
-    const { question, options, expiresAt, messageId, directMessageId } = payload;
-    if (!options || options.length < 2) {
-      throw new BadRequestError("A poll must have at least 2 options");
-    }
-    return await prisma.poll.create({
-      data: {
-        question,
-        expiresAt,
-        messageId,
-        directMessageId,
-        options: {
-          create: options.map((text) => ({ text }))
-        }
-      },
-      include: {
-        options: {
-          include: {
-            votes: true,
-            _count: {
-              select: { votes: true }
-            }
-          }
-        }
-      }
-    });
-  }
-  /**
-   * Cast a vote in a poll
-   */
-  static async castVote(payload) {
-    const { pollId, userId, optionId } = payload;
-    const profile = await getProfileByUserId(userId);
-    if (!profile) throw new NotFoundError("Profile not found");
-    const poll = await prisma.poll.findUnique({
-      where: { id: pollId }
-    });
-    if (!poll) throw new NotFoundError("Poll not found");
-    if (poll.expiresAt && poll.expiresAt < /* @__PURE__ */ new Date()) {
-      throw new BadRequestError("This poll has expired");
-    }
-    const existingVote = await prisma.pollVote.findUnique({
-      where: {
-        profileId_pollId: {
-          profileId: profile.id,
-          pollId
-        }
-      }
-    });
-    if (existingVote) {
-      if (existingVote.optionId === optionId) {
-        return await prisma.pollVote.delete({
-          where: { id: existingVote.id }
-        });
-      }
-      return await prisma.pollVote.update({
-        where: { id: existingVote.id },
-        data: { optionId }
-      });
-    }
-    return await prisma.pollVote.create({
-      data: {
-        profileId: profile.id,
-        pollId,
-        optionId
-      }
-    });
-  }
-  /**
-   * Get poll results with vote counts
-   */
-  static async getPollResults(pollId) {
-    return await prisma.poll.findUnique({
-      where: { id: pollId },
-      include: {
-        options: {
-          include: {
-            votes: true,
-            _count: {
-              select: { votes: true }
-            }
-          }
-        }
-      }
-    });
-  }
-};
-
-// src/core/messaging/controllers.ts
-init_services3();
+// src/core/messaging/controllers/message.controller.ts
 init_events();
-import axios from "axios";
 var createChannelMessage = async (req, res) => {
   try {
     const { content, fileUrl, isEncrypted, parentId, poll } = req.body;
@@ -1316,74 +1223,32 @@ var deleteMessage = async (req, res) => {
     return ApiResponse.error(res, error.message || "Internal server error");
   }
 };
-var getConversation = async (req, res) => {
-  const { receiverId } = req.query;
-  try {
-    const conversation = await findOrCreateConversation(
-      res.locals.userId,
-      receiverId
-    );
-    return ApiResponse.success(res, conversation);
-  } catch (err) {
-    logger_default.error(err);
-    return ApiResponse.error(res, err.message);
-  }
-};
 var getMessages = async (req, res) => {
-  const { receiverId, channelId, cursor } = req.query;
+  const { channelId, cursor } = req.query;
   const MESSAGES_BATCH = 10;
   try {
-    let messages = [];
-    if (channelId) {
-      messages = await prisma.message.findMany({
-        take: MESSAGES_BATCH,
-        ...cursor && { skip: 1, cursor: { id: cursor } },
-        where: { channelId },
-        include: {
-          cohortMember: { include: { profile: true } },
-          poll: {
-            include: {
-              options: {
-                include: {
-                  votes: true,
-                  _count: { select: { votes: true } }
-                }
-              }
-            }
-          }
-        },
-        orderBy: { createdAt: "desc" }
-      });
-    } else if (receiverId) {
-      const conversation = await findOrCreateConversation(
-        res.locals.userId,
-        receiverId
-      );
-      if (!conversation) {
-        return ApiResponse.error(res, "Conversation not found", 404);
-      }
-      messages = await prisma.directMessage.findMany({
-        take: MESSAGES_BATCH,
-        ...cursor && { skip: 1, cursor: { id: cursor } },
-        where: { conversationId: conversation.id },
-        include: {
-          cohortMember: { include: { profile: true } },
-          poll: {
-            include: {
-              options: {
-                include: {
-                  votes: true,
-                  _count: { select: { votes: true } }
-                }
-              }
-            }
-          }
-        },
-        orderBy: { createdAt: "desc" }
-      });
-    } else {
-      return ApiResponse.error(res, "receiverId or channelId required", 400);
+    if (!channelId) {
+      return ApiResponse.error(res, "Channel ID required", 400);
     }
+    const messages = await prisma.message.findMany({
+      take: MESSAGES_BATCH,
+      ...cursor && { skip: 1, cursor: { id: cursor } },
+      where: { channelId },
+      include: {
+        cohortMember: { include: { profile: true } },
+        poll: {
+          include: {
+            options: {
+              include: {
+                votes: true,
+                _count: { select: { votes: true } }
+              }
+            }
+          }
+        }
+      },
+      orderBy: { createdAt: "desc" }
+    });
     let nextCursor = null;
     if (messages.length === MESSAGES_BATCH) {
       nextCursor = messages[MESSAGES_BATCH - 1].id;
@@ -1395,6 +1260,115 @@ var getMessages = async (req, res) => {
   } catch (error) {
     logger_default.error("[GET_MESSAGES]", error);
     return ApiResponse.error(res, "Internal server error");
+  }
+};
+var getDirectMessages = async (req, res) => {
+  const { conversationId, cursor } = req.query;
+  const MESSAGES_BATCH = 10;
+  try {
+    if (!conversationId) {
+      return ApiResponse.error(res, "Conversation ID missing", 400);
+    }
+    const messages = await prisma.directMessage.findMany({
+      take: MESSAGES_BATCH,
+      ...cursor && { skip: 1, cursor: { id: cursor } },
+      where: {
+        conversationId
+      },
+      include: {
+        cohortMember: {
+          include: {
+            profile: true
+          }
+        },
+        poll: {
+          include: {
+            options: {
+              include: {
+                votes: true,
+                _count: { select: { votes: true } }
+              }
+            }
+          }
+        }
+      },
+      orderBy: {
+        createdAt: "desc"
+      }
+    });
+    let nextCursor = null;
+    if (messages.length === MESSAGES_BATCH) {
+      nextCursor = messages[MESSAGES_BATCH - 1].id;
+    }
+    return ApiResponse.success(res, {
+      items: messages,
+      nextCursor
+    });
+  } catch (error) {
+    logger_default.error("[GET_DIRECT_MESSAGES]", error);
+    return ApiResponse.error(res, "Internal Error", 500);
+  }
+};
+var pinMessage = async (req, res) => {
+  try {
+    const { messageId } = req.params;
+    const { cohortId, conversationId } = req.query;
+    const userId = res.locals.userId;
+    const message = await PinService.pinMessage({
+      messageId,
+      userId,
+      cohortId,
+      conversationId
+    });
+    events.emit(MESSAGE_EVENTS.UPDATED, {
+      message,
+      type: cohortId ? "channel" : "direct",
+      contextId: cohortId ? message.channelId : message.conversationId
+    });
+    return ApiResponse.success(res, message, "Message pinned");
+  } catch (error) {
+    logger_default.error("[PIN_MESSAGE]", error);
+    return ApiResponse.error(res, error.message || "Internal server error");
+  }
+};
+var unpinMessage = async (req, res) => {
+  try {
+    const { messageId } = req.params;
+    const { cohortId, conversationId } = req.query;
+    const userId = res.locals.userId;
+    const message = await PinService.unpinMessage({
+      messageId,
+      userId,
+      cohortId,
+      conversationId
+    });
+    events.emit(MESSAGE_EVENTS.UPDATED, {
+      message,
+      type: cohortId ? "channel" : "direct",
+      contextId: cohortId ? message.channelId : message.conversationId
+    });
+    return ApiResponse.success(res, message, "Message unpinned");
+  } catch (error) {
+    logger_default.error("[UNPIN_MESSAGE]", error);
+    return ApiResponse.error(res, error.message || "Internal server error");
+  }
+};
+
+// src/core/messaging/controllers/conversation.controller.ts
+init_db();
+init_logger();
+init_services3();
+var getConversation = async (req, res) => {
+  const { receiverId } = req.query;
+  try {
+    const conversation = await findOrCreateConversation(
+      res.locals.userId,
+      receiverId
+    );
+    return ApiResponse.success(res, conversation);
+  } catch (err) {
+    logger_default.error(err);
+    return ApiResponse.error(res, err.message);
   }
 };
 var getConversations = async (req, res) => {
@@ -1486,6 +1460,10 @@ var getConversations = async (req, res) => {
     return ApiResponse.error(res, "Internal server error");
   }
 };
+
+// src/core/messaging/controllers/thread.controller.ts
+init_db();
+init_logger();
 var getChannelThreadMetadata = async (req, res) => {
   try {
     const { messageId } = req.params;
@@ -1574,6 +1552,14 @@ var getDirectThreadMetadata = async (req, res) => {
     return ApiResponse.error(res, "Internal server error");
   }
 };
+
+// src/core/messaging/controllers/reaction.controller.ts
+init_db();
+init_logger();
+var getReactionService = () => {
+  const { ReactionService: RealReactionService } = (init_services3(), __toCommonJS(services_exports));
+  return RealReactionService;
+};
 var addReaction = async (req, res) => {
   try {
     const userId = res.locals.userId;
@@ -1582,7 +1568,8 @@ var addReaction = async (req, res) => {
     if (!emoji || !messageId && !directMessageId) {
       return ApiResponse.error(res, "Missing required fields", 400);
     }
-    const reaction = await ReactionService2.addReaction({
+    const reactionService = getReactionService();
+    const reaction = await reactionService.addReaction({
       userId,
       emoji,
       messageId,
@@ -1604,7 +1591,8 @@ var removeReaction = async (req, res) => {
     const { reactionId } = req.params;
     const userId = res.locals.userId;
     if (!userId) return ApiResponse.error(res, "Unauthorized", 401);
-    await ReactionService2.removeReaction({
+    const reactionService = getReactionService();
+    await reactionService.removeReaction({
       userId,
       reactionId
     });
@@ -1648,9 +1636,136 @@ var getMessageReactions = async (req, res) => {
     return ApiResponse.error(res, "Internal server error");
   }
 };
-var getLinkPreview = async (req, res) => {
+
+// src/core/messaging/controllers/poll.controller.ts
+init_logger();
+
+// src/core/messaging/poll.service.ts
+init_db();
+init_services2();
+init_errors();
+var PollService = class {
+  /**
+   * Create a new poll attached to a message
+   */
+  static async createPoll(payload) {
+    const { question, options, expiresAt, messageId, directMessageId } = payload;
+    if (!options || options.length < 2) {
+      throw new BadRequestError("A poll must have at least 2 options");
+    }
+    return await prisma.poll.create({
+      data: {
+        question,
+        expiresAt,
+        messageId,
+        directMessageId,
+        options: {
+          create: options.map((text) => ({ text }))
+        }
+      },
+      include: {
+        options: {
+          include: {
+            votes: true,
+            _count: {
+              select: { votes: true }
+            }
+          }
+        }
+      }
+    });
+  }
+  /**
+   * Cast a vote in a poll
+   */
+  static async castVote(payload) {
+    const { pollId, userId, optionId } = payload;
+    const profile = await getProfileByUserId(userId);
+    if (!profile) throw new NotFoundError("Profile not found");
+    const poll = await prisma.poll.findUnique({
+      where: { id: pollId }
+    });
+    if (!poll) throw new NotFoundError("Poll not found");
+    if (poll.expiresAt && poll.expiresAt < /* @__PURE__ */ new Date()) {
+      throw new BadRequestError("This poll has expired");
+    }
+    const existingVote = await prisma.pollVote.findUnique({
+      where: {
+        profileId_pollId: {
+          profileId: profile.id,
+          pollId
+        }
+      }
+    });
+    if (existingVote) {
+      if (existingVote.optionId === optionId) {
+        return await prisma.pollVote.delete({
+          where: { id: existingVote.id }
+        });
+      }
+      return await prisma.pollVote.update({
+        where: { id: existingVote.id },
+        data: { optionId }
+      });
+    }
+    return await prisma.pollVote.create({
+      data: {
+        profileId: profile.id,
+        pollId,
+        optionId
+      }
+    });
+  }
+  /**
+   * Get poll results with vote counts
+   */
+  static async getPollResults(pollId) {
+    return await prisma.poll.findUnique({
+      where: { id: pollId },
+      include: {
+        options: {
+          include: {
+            votes: true,
+            _count: {
+              select: { votes: true }
+            }
+          }
+        }
+      }
+    });
+  }
+};
+
+// src/core/messaging/controllers/poll.controller.ts
+init_events();
+var castPollVote = async (req, res) => {
   try {
-    const { url } = req.query;
+    const { pollId } = req.params;
+    const { optionId } = req.body;
+    const userId = res.locals.userId;
+    if (!optionId) {
+      return ApiResponse.error(res, "Option ID missing", 400);
+    }
+    await PollService.castVote({
+      pollId,
+      userId,
+      optionId
+    });
+    const updatedPoll = await PollService.getPollResults(pollId);
+    events.emit(POLL_EVENTS.VOTED, { poll: updatedPoll });
+    return ApiResponse.success(res, updatedPoll, "Vote cast successfully");
+  } catch (error) {
+    logger_default.error("[CAST_POLL_VOTE]", error);
+    return ApiResponse.error(res, error.message || "Internal server error");
+  }
+};
+
+// src/core/messaging/controllers/link-preview.controller.ts
+init_logger();
+import axios from "axios";
+var getLinkPreview = async (req, res) => {
+  const { url } = req.query;
+  try {
     if (!url || typeof url !== "string") {
       return ApiResponse.error(res, "URL is required", 400);
     }
@@ -1689,85 +1804,12 @@ var getLinkPreview = async (req, res) => {
       "Link preview fetched"
     );
   } catch (error) {
-    logger_default.error(`[LinkPreview] Error: ${error.message}`);
     const status = error.response?.status || 500;
     const errorMessage = error.response?.data?.error?.message || error.message || "Failed to fetch link preview";
+    logger_default.error(
+      `[LinkPreview] Error fetching metadata for ${url}: ${errorMessage} (Status: ${status})`
+    );
     return ApiResponse.error(res, errorMessage, status);
-  }
-};
-var ReactionService2 = {
-  addReaction: async (payload) => {
-    const { ReactionService: RealReactionService } = (init_services3(), __toCommonJS(services_exports));
-    return await RealReactionService.addReaction(payload);
-  },
-  removeReaction: async (payload) => {
-    const { ReactionService: RealReactionService } = (init_services3(), __toCommonJS(services_exports));
-    return await RealReactionService.removeReaction(payload);
-  }
-};
-var pinMessage = async (req, res) => {
-  try {
-    const { messageId } = req.params;
-    const { cohortId, conversationId } = req.query;
-    const userId = res.locals.userId;
-    const message = await PinService.pinMessage({
-      messageId,
-      userId,
-      cohortId,
-      conversationId
-    });
-    events.emit(MESSAGE_EVENTS.UPDATED, {
-      message,
-      type: cohortId ? "channel" : "direct",
-      contextId: cohortId ? message.channelId : message.conversationId
-    });
-    return ApiResponse.success(res, message, "Message pinned");
-  } catch (error) {
-    logger_default.error("[PIN_MESSAGE]", error);
-    return ApiResponse.error(res, error.message || "Internal server error");
-  }
-};
-var unpinMessage = async (req, res) => {
-  try {
-    const { messageId } = req.params;
-    const { cohortId, conversationId } = req.query;
-    const userId = res.locals.userId;
-    const message = await PinService.unpinMessage({
-      messageId,
-      userId,
-      cohortId,
-      conversationId
-    });
-    events.emit(MESSAGE_EVENTS.UPDATED, {
-      message,
-      type: cohortId ? "channel" : "direct",
-      contextId: cohortId ? message.channelId : message.conversationId
-    });
-    return ApiResponse.success(res, message, "Message unpinned");
-  } catch (error) {
-    logger_default.error("[UNPIN_MESSAGE]", error);
-    return ApiResponse.error(res, error.message || "Internal server error");
-  }
-};
-var castPollVote = async (req, res) => {
-  try {
-    const { pollId } = req.params;
-    const { optionId } = req.body;
-    const userId = res.locals.userId;
-    if (!optionId) {
-      return ApiResponse.error(res, "Option ID missing", 400);
-    }
-    await PollService.castVote({
-      pollId,
-      userId,
-      optionId
-    });
-    const updatedPoll = await PollService.getPollResults(pollId);
-    events.emit(POLL_EVENTS.VOTED, { poll: updatedPoll });
-    return ApiResponse.success(res, updatedPoll, "Vote cast successfully");
-  } catch (error) {
-    logger_default.error("[CAST_POLL_VOTE]", error);
-    return ApiResponse.error(res, error.message || "Internal server error");
   }
 };
 
@@ -1888,6 +1930,7 @@ var pollRouter = Router();
 pollRouter.post("/:pollId/vote", castPollVote);
 var linkPreviewRouter = Router();
 linkPreviewRouter.get("/", getLinkPreview);
+router.get("/direct-messages", getDirectMessages);
 router.use("/messages", messageRouter);
 router.use("/conversations", conversationRouter);
 router.use("/threads", threadRouter);
@@ -2206,19 +2249,130 @@ var kickMember = async (req, res) => {
   }
 };
 
+// src/shared/schemas/cohort.schema.ts
+import { z as z2 } from "zod";
+var createChannelSchema = z2.object({
+  body: z2.object({
+    name: z2.string().min(1, "Channel name is required").max(50, "Channel name is too long").regex(
+      /^[a-z0-9-]+$/,
+      "Channel name must be lowercase alphanumeric with hyphens"
+    ),
+    type: z2.enum(["TEXT", "AUDIO", "VIDEO"]).default("TEXT"),
+    cohortId: z2.string().min(1, "Cohort ID is required")
+  })
+});
+var updateChannelSchema = z2.object({
+  params: z2.object({
+    channelId: z2.string().min(1, "Channel ID is required")
+  }),
+  body: z2.object({
+    name: z2.string().min(1, "Channel name is required").max(50, "Channel name is too long").regex(
+      /^[a-z0-9-]+$/,
+      "Channel name must be lowercase alphanumeric with hyphens"
+    ).optional(),
+    type: z2.enum(["TEXT", "AUDIO", "VIDEO"]).optional()
+  }),
+  query: z2.object({
+    cohortId: z2.string().min(1, "Cohort ID is required")
+  })
+});
+var deleteChannelSchema = z2.object({
+  params: z2.object({
+    channelId: z2.string().min(1, "Channel ID is required")
+  }),
+  query: z2.object({
+    cohortId: z2.string().min(1, "Cohort ID is required")
+  })
+});
+var getChannelSchema = z2.object({
+  params: z2.object({
+    channelId: z2.string().min(1, "Channel ID is required")
+  })
+});
+var getCohortChannelsSchema = z2.object({
+  params: z2.object({
+    cohortId: z2.string().min(1, "Cohort ID is required")
+  })
+});
+var updateMemberRoleSchema = z2.object({
+  params: z2.object({
+    cohortMemberId: z2.string().min(1, "Cohort member ID is required")
+  }),
+  body: z2.object({
+    role: z2.enum(["ADMIN", "MODERATOR", "GUEST"])
+  }),
+  query: z2.object({
+    cohortId: z2.string().min(1, "Cohort ID is required")
+  })
+});
+var kickMemberSchema = z2.object({
+  params: z2.object({
+    cohortMemberId: z2.string().min(1, "Cohort member ID is required")
+  }),
+  query: z2.object({
+    cohortId: z2.string().min(1, "Cohort ID is required")
+  })
+});
+var getCohortMembersSchema = z2.object({
+  params: z2.object({
+    cohortId: z2.string().min(1, "Cohort ID is required")
+  })
+});
+var getMemberSchema = z2.object({
+  params: z2.object({
+    cohortMemberId: z2.string().min(1, "Cohort member ID is required")
+  })
+});
+
 // src/core/cohorts/routes.ts
 var router2 = Router2();
 var channelRouter = Router2();
-channelRouter.get("/cohort/:cohortId", getServerChannels);
-channelRouter.get("/:channelId", getChannel);
-channelRouter.post("/", createChannel);
-channelRouter.patch("/:channelId", updateChannel);
-channelRouter.delete("/:channelId", deleteChannel);
+channelRouter.get(
+  "/cohort/:cohortId",
+  validationMiddleware_default(getCohortChannelsSchema),
+  getServerChannels
+);
+channelRouter.get(
+  "/:channelId",
+  validationMiddleware_default(getChannelSchema),
+  getChannel
+);
+channelRouter.post(
+  "/",
+  validationMiddleware_default(createChannelSchema),
+  createChannel
+);
+channelRouter.patch(
+  "/:channelId",
+  validationMiddleware_default(updateChannelSchema),
+  updateChannel
+);
+channelRouter.delete(
+  "/:channelId",
+  validationMiddleware_default(deleteChannelSchema),
+  deleteChannel
+);
 var memberRouter = Router2();
-memberRouter.get("/cohort/:cohortId", getServerMembers);
-memberRouter.get("/:cohortMemberId", getMember);
-memberRouter.patch("/:cohortMemberId", updateMemberRole);
-memberRouter.delete("/:cohortMemberId", kickMember);
+memberRouter.get(
+  "/cohort/:cohortId",
+  validationMiddleware_default(getCohortMembersSchema),
+  getServerMembers
+);
+memberRouter.get(
+  "/:cohortMemberId",
+  validationMiddleware_default(getMemberSchema),
+  getMember
+);
+memberRouter.patch(
+  "/:cohortMemberId",
+  validationMiddleware_default(updateMemberRoleSchema),
+  updateMemberRole
+);
+memberRouter.delete(
+  "/:cohortMemberId",
+  validationMiddleware_default(kickMemberSchema),
+  kickMember
+);
 router2.use("/channels", channelRouter);
 router2.use("/cohort-members", memberRouter);
 var routes_default2 = router2;
@@ -2386,10 +2540,21 @@ var getCurrentUser = async (req, res) => {
 var updateProfile2 = async (req, res) => {
   try {
     const userId = res.locals.userId;
-    const { name, imageUrl } = req.body;
+    const {
+      name,
+      imageUrl,
+      publicKey,
+      encryptedPrivateKey,
+      privateKeyIv,
+      privateKeySalt
+    } = req.body;
     const updatedData = await updateProfile(userId, {
       name,
-      imageUrl
+      imageUrl,
+      publicKey,
+      encryptedPrivateKey,
+      privateKeyIv,
+      privateKeySalt
     });
     return ApiResponse.success(res, updatedData);
   } catch (error) {
@@ -2398,10 +2563,42 @@ var updateProfile2 = async (req, res) => {
   }
 };
 
+// src/shared/schemas/profile.schema.ts
+import { z as z3 } from "zod";
+var updateProfileSchema = z3.object({
+  body: z3.object({
+    name: z3.string().min(1, "Name cannot be empty").max(100, "Name is too long").optional(),
+    imageUrl: z3.url("Invalid image URL").optional(),
+    // E2EE fields - must be valid base64 strings if provided
+    publicKey: z3.string().min(1, "Public key cannot be empty").optional(),
+    encryptedPrivateKey: z3.string().min(1, "Encrypted private key cannot be empty").optional(),
+    privateKeyIv: z3.string().min(1, "Private key IV cannot be empty").optional(),
+    privateKeySalt: z3.string().min(1, "Private key salt cannot be empty").optional(),
+    bio: z3.string().max(500, "Bio is too long").optional()
+  }).refine(
+    (data) => {
+      const e2eeFields = [
+        data.encryptedPrivateKey,
+        data.privateKeyIv,
+        data.privateKeySalt
+      ];
+      const providedCount = e2eeFields.filter(Boolean).length;
+      return providedCount === 0 || providedCount === 3;
+    },
+    {
+      message: "All E2EE fields (encryptedPrivateKey, privateKeyIv, privateKeySalt) must be provided together"
+    }
+  )
+});
+
 // src/core/users/routes.ts
 var router4 = Router4();
 router4.get("/users/me", getCurrentUser);
-router4.patch("/profile", updateProfile2);
+router4.patch(
+  "/profile",
+  validationMiddleware_default(updateProfileSchema),
+  updateProfile2
+);
 var routes_default4 = router4;
 
 // src/config/routes.ts
@@ -2432,7 +2629,12 @@ function setupRoutes(app2) {
       uptime: process.uptime()
     });
   });
-  app2.use(authMiddleware);
+  app2.use((req, res, next) => {
+    if (req.path.includes("/link-preview")) {
+      return next();
+    }
+    return authMiddleware(req, res, next);
+  });
   app2.use(express.json());
   const v1Router = express.Router();
   v1Router.use(routes_default);
@@ -2866,13 +3068,34 @@ function createApp() {
     logger_default.info(`[Request] ${req.method} ${req.url}`);
     next();
   });
-  const limiter = rateLimit({
+  const writeLimiter = rateLimit({
     windowMs: 15 * 60 * 1e3,
-    max: 1e3,
+    // 15 minutes
+    max: 500,
+    // 500 requests per 15 min
     standardHeaders: true,
-    legacyHeaders: false
+    legacyHeaders: false,
+    message: "Too many requests, please try again later."
   });
-  app2.use(limiter);
+  const readLimiter = rateLimit({
+    windowMs: 1 * 60 * 1e3,
+    // 1 minute
+    max: 100,
+    // 100 requests per minute
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: "Too many requests, please slow down."
+  });
+  app2.use((req, res, next) => {
+    if (req.path.includes("/link-preview")) {
+      return next();
+    }
+    if (req.method === "GET") {
+      readLimiter(req, res, next);
+    } else {
+      writeLimiter(req, res, next);
+    }
+  });
   return app2;
 }
 

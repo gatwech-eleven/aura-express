@@ -30,6 +30,21 @@ model Profile {
   notificationsReceived Notification[] @relation("NotificationReceiver")
   reactions             Reaction[]
   pollVotes             PollVote[]
+  documents            Document[]
+}
+
+model Document {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  title     String
+  content   String   // Store Tiptap JSON string
+  
+  profileId String   @db.ObjectId
+  profile   Profile  @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([profileId])
 }
 
 enum UserRole {

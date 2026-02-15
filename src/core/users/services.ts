@@ -31,7 +31,15 @@ export const getProfileWithServers = async (userId: string) => {
  */
 export const updateProfile = async (
   userId: string,
-  data: { name?: string; imageUrl?: string },
+  data: {
+    name?: string;
+    imageUrl?: string;
+    publicKey?: string;
+    encryptedPrivateKey?: string;
+    privateKeyIv?: string;
+    privateKeySalt?: string;
+    bio?: string;
+  },
 ) => {
   try {
     const updatedUser = await prisma.user.update({
@@ -47,6 +55,11 @@ export const updateProfile = async (
       data: {
         name: data.name,
         imageUrl: data.imageUrl,
+        publicKey: data.publicKey,
+        encryptedPrivateKey: data.encryptedPrivateKey,
+        privateKeyIv: data.privateKeyIv,
+        privateKeySalt: data.privateKeySalt,
+        bio: data.bio,
       },
     });
 

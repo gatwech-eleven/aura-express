@@ -44,7 +44,12 @@ export function setupRoutes(app: Application): void {
     });
   });
 
-  app.use(authMiddleware);
+  app.use((req, res, next) => {
+    if (req.path.includes("/link-preview")) {
+      return next();
+    }
+    return authMiddleware(req, res, next);
+  });
 
   app.use(express.json());
 

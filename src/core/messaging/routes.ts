@@ -61,6 +61,7 @@ const linkPreviewRouter = Router();
 linkPreviewRouter.get("/", controllers.getLinkPreview);
 
 // Mount all messaging-related routes
+router.get("/direct-messages", controllers.getDirectMessages);
 router.use("/messages", messageRouter);
 router.use("/conversations", conversationRouter);
 router.use("/threads", threadRouter);

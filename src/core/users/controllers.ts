@@ -27,11 +27,22 @@ export const getCurrentUser = async (req: Request, res: Response) => {
 export const updateProfile = async (req: Request, res: Response) => {
   try {
     const userId = res.locals.userId;
-    const { name, imageUrl } = req.body;
+    const {
+      name,
+      imageUrl,
+      publicKey,
+      encryptedPrivateKey,
+      privateKeyIv,
+      privateKeySalt,
+    } = req.body;
 
     const updatedData = await services.updateProfile(userId, {
       name,
       imageUrl,
+      publicKey,
+      encryptedPrivateKey,
+      privateKeyIv,
+      privateKeySalt,
     });
 
     return ApiResponse.success(res, updatedData);

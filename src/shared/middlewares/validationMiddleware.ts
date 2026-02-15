@@ -1,9 +1,9 @@
-import { AnyZodObject } from "zod";
+import { z } from "zod";
 import { Request, Response, NextFunction } from "express";
 import logger from "@/shared/core/logger";
 
 const validator =
-  (schema: AnyZodObject) =>
+  (schema: z.ZodTypeAny) =>
   (req: Request, res: Response, next: NextFunction) => {
     try {
       schema.parse({
