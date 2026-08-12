@@ -2,7 +2,7 @@ import express, { Application } from "express";
 import cors from "cors";
 import cookieParser from "cookie-parser";
 import { rateLimit } from "express-rate-limit";
-import logger from "@/core/logger";
+import logger from "@/shared/core/logger";
 
 // CORS configuration - support multiple origins
 const allowedOrigins = process.env.ALLOWED_ORIGINS
@@ -40,14 +40,36 @@ export function createApp(): Application {
     next();
   });
 
-  // Rate limiting to prevent DoS/Brute-force
-  const limiter = rateLimit({
-    windowMs: 15 * 60 * 1000,
-    max: 1000,
+  // Stricter limit for write operations (create, update, delete)
+  const writeLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    max: 500, // 500 requests per 15 min
     standardHeaders: true,
     legacyHeaders: false,
+    message: "Too many requests, please try again later.",
   });
-  app.use(limiter);
+
+  // More lenient limit for read operations (GET requests)
+  const readLimiter = rateLimit({
+    windowMs: 1 * 60 * 1000, // 1 minute
+    max: 100, // 100 requests per minute
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: "Too many requests, please slow down.",
+  });
+
+  // Apply appropriate limiter based on request method
+  app.use((req, res, next) => {
+    if (req.path.includes("/link-preview")) {
+      return next();
+    }
+
+    if (req.method === "GET") {
+      readLimiter(req, res, next);
+    } else {
+      writeLimiter(req, res, next);
+    }
+  });
 
   return app;
 }

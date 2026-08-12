@@ -4,6 +4,9 @@ var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
 var __getOwnPropNames = Object.getOwnPropertyNames;
 var __getProtoOf = Object.getPrototypeOf;
 var __hasOwnProp = Object.prototype.hasOwnProperty;
+var __esm = (fn, res) => function __init() {
+  return fn && (res = (0, fn[__getOwnPropNames(fn)[0]])(fn = 0)), res;
+};
 var __export = (target, all) => {
   for (var name in all)
     __defProp(target, name, { get: all[name], enumerable: true });
@@ -26,6 +29,636 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
 ));
 var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
 
+// src/shared/core/logger.ts
+var import_winston, logger, logger_default;
+var init_logger = __esm({
+  "src/shared/core/logger.ts"() {
+    import_winston = __toESM(require("winston"), 1);
+    logger = import_winston.default.createLogger({
+      level: "info",
+      format: import_winston.default.format.json(),
+      defaultMeta: { service: "user-service" },
+      transports: []
+    });
+    if (process.env.NODE_ENV !== "production") {
+      logger.add(
+        new import_winston.default.transports.Console({
+          format: import_winston.default.format.simple()
+        })
+      );
+    } else {
+      logger.add(
+        new import_winston.default.transports.Console({
+          format: import_winston.default.format.json()
+        })
+      );
+    }
+    logger_default = logger;
+  }
+});
+
+// src/shared/core/db.ts
+var import_client, prismaClientSingleton, globalForPrisma, prisma;
+var init_db = __esm({
+  "src/shared/core/db.ts"() {
+    import_client = require("@prisma/client");
+    prismaClientSingleton = () => {
+      return new import_client.PrismaClient();
+    };
+    globalForPrisma = globalThis;
+    prisma = globalForPrisma.prisma ?? prismaClientSingleton();
+    if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = prisma;
+  }
+});
+
+// src/shared/utils/errors.ts
+var AppError, BadRequestError, UnauthorizedError, NotFoundError;
+var init_errors = __esm({
+  "src/shared/utils/errors.ts"() {
+    AppError = class extends Error {
+      statusCode;
+      isOperational;
+      constructor(message, statusCode = 500, isOperational = true) {
+        super(message);
+        this.statusCode = statusCode;
+        this.isOperational = isOperational;
+        Object.setPrototypeOf(this, new.target.prototype);
+        Error.captureStackTrace(this, this.constructor);
+      }
+    };
+    BadRequestError = class extends AppError {
+      constructor(message = "Bad Request") {
+        super(message, 400);
+      }
+    };
+    UnauthorizedError = class extends AppError {
+      constructor(message = "Unauthorized") {
+        super(message, 401);
+      }
+    };
+    NotFoundError = class extends AppError {
+      constructor(message = "Resource not found") {
+        super(message, 404);
+      }
+    };
+  }
+});
+
+// src/shared/core/events.ts
+var import_events, events, MESSAGE_EVENTS, REACTION_EVENTS, POLL_EVENTS;
+var init_events = __esm({
+  "src/shared/core/events.ts"() {
+    import_events = require("events");
+    events = new import_events.EventEmitter();
+    MESSAGE_EVENTS = {
+      CREATED: "message:created",
+      UPDATED: "message:updated",
+      DELETED: "message:deleted"
+    };
+    REACTION_EVENTS = {
+      ADDED: "reaction:added",
+      REMOVED: "reaction:removed"
+    };
+    POLL_EVENTS = {
+      VOTED: "poll:voted"
+    };
+  }
+});
+
+// src/core/cohorts/services.ts
+var MemberService;
+var init_services = __esm({
+  "src/core/cohorts/services.ts"() {
+    init_db();
+    MemberService = class {
+      /**
+       * Resolve a cohortMember from a userId and context
+       */
+      static async resolveMember(userId, context) {
+        const { cohortId, conversationId } = context;
+        if (cohortId) {
+          return await prisma.cohortMember.findFirst({
+            where: {
+              cohortId,
+              profile: { userId }
+            },
+            include: { profile: true }
+          });
+        }
+        if (conversationId) {
+          const conversation = await prisma.conversation.findUnique({
+            where: { id: conversationId },
+            include: {
+              cohortMemberOne: { include: { profile: true } },
+              cohortMemberTwo: { include: { profile: true } }
+            }
+          });
+          if (!conversation) return null;
+          if (conversation.cohortMemberOne.profile.userId === userId) {
+            return conversation.cohortMemberOne;
+          }
+          if (conversation.cohortMemberTwo.profile.userId === userId) {
+            return conversation.cohortMemberTwo;
+          }
+        }
+        return null;
+      }
+    };
+  }
+});
+
+// src/core/users/services.ts
+var getProfileByUserId, updateProfile;
+var init_services2 = __esm({
+  "src/core/users/services.ts"() {
+    init_db();
+    init_logger();
+    getProfileByUserId = async (userId) => {
+      return await prisma.profile.findFirst({
+        where: { userId }
+      });
+    };
+    updateProfile = async (userId, data) => {
+      try {
+        const updatedUser = await prisma.user.update({
+          where: { id: userId },
+          data: {
+            name: data.name,
+            image: data.imageUrl
+          }
+        });
+        const updatedProfile = await prisma.profile.update({
+          where: { userId },
+          data: {
+            name: data.name,
+            imageUrl: data.imageUrl,
+            publicKey: data.publicKey,
+            encryptedPrivateKey: data.encryptedPrivateKey,
+            privateKeyIv: data.privateKeyIv,
+            privateKeySalt: data.privateKeySalt,
+            bio: data.bio
+          }
+        });
+        return { user: updatedUser, profile: updatedProfile };
+      } catch (error) {
+        logger_default.error("[UPDATE_PROFILE_SERVICE]", error);
+        throw error;
+      }
+    };
+  }
+});
+
+// src/core/messaging/services.ts
+var services_exports = {};
+__export(services_exports, {
+  MessageService: () => MessageService,
+  ReactionService: () => ReactionService,
+  findOrCreateConversation: () => findOrCreateConversation
+});
+var MessageService, findOrCreateConversation, findConversation, createNewConversation, ReactionService;
+var init_services3 = __esm({
+  "src/core/messaging/services.ts"() {
+    init_db();
+    init_events();
+    init_errors();
+    init_services();
+    init_services2();
+    MessageService = class {
+      /**
+       * Create a channel message
+       */
+      static async createChannelMessage(payload) {
+        const {
+          content,
+          fileUrl,
+          isEncrypted,
+          parentId,
+          cohortId,
+          channelId,
+          userId,
+          poll
+        } = payload;
+        const cohortMember = await MemberService.resolveMember(userId, {
+          cohortId
+        });
+        if (!cohortMember) {
+          throw new NotFoundError("CohortMember not found in this server");
+        }
+        console.time(
+          `[MessageService.createChannelMessage] DB Create with Poll: ${userId}`
+        );
+        const message = await prisma.message.create({
+          data: {
+            content,
+            fileUrl: fileUrl || null,
+            channelId,
+            cohortMemberId: cohortMember.id,
+            isEncrypted: !!isEncrypted,
+            parentId: parentId || null,
+            ...poll && {
+              poll: {
+                create: {
+                  question: poll.question,
+                  expiresAt: poll.expiresAt,
+                  options: {
+                    create: poll.options.map((text) => ({ text }))
+                  }
+                }
+              }
+            }
+          },
+          include: {
+            cohortMember: {
+              include: {
+                profile: true
+              }
+            },
+            poll: {
+              include: {
+                options: {
+                  include: {
+                    votes: true,
+                    _count: {
+                      select: { votes: true }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        });
+        console.timeEnd(
+          `[MessageService.createChannelMessage] DB Create with Poll: ${userId}`
+        );
+        events.emit(MESSAGE_EVENTS.CREATED, {
+          message,
+          type: "channel",
+          contextId: channelId
+        });
+        return message;
+        events.emit(MESSAGE_EVENTS.CREATED, {
+          message,
+          type: "channel",
+          contextId: channelId
+        });
+        return message;
+      }
+      /**
+       * Create a direct message
+       */
+      static async createDirectMessage(payload) {
+        const {
+          content,
+          fileUrl,
+          isEncrypted,
+          parentId,
+          conversationId,
+          userId,
+          poll
+        } = payload;
+        const cohortMember = await MemberService.resolveMember(userId, {
+          conversationId
+        });
+        if (!cohortMember) {
+          throw new NotFoundError("CohortMember not found in conversation");
+        }
+        const message = await prisma.directMessage.create({
+          data: {
+            content,
+            fileUrl: fileUrl || null,
+            conversationId,
+            cohortMemberId: cohortMember.id,
+            isEncrypted: !!isEncrypted,
+            parentId: parentId || null,
+            ...poll && {
+              poll: {
+                create: {
+                  question: poll.question,
+                  expiresAt: poll.expiresAt,
+                  options: {
+                    create: poll.options.map((text) => ({ text }))
+                  }
+                }
+              }
+            }
+          },
+          include: {
+            cohortMember: {
+              include: {
+                profile: true
+              }
+            },
+            poll: {
+              include: {
+                options: {
+                  include: {
+                    votes: true,
+                    _count: {
+                      select: { votes: true }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        });
+        events.emit(MESSAGE_EVENTS.CREATED, {
+          message,
+          type: "direct",
+          contextId: conversationId
+        });
+        return message;
+      }
+      /**
+       * Update a message (Polymorphic)
+       */
+      static async updateMessage(payload) {
+        const { messageId, content, userId, cohortId, conversationId } = payload;
+        const cohortMember = await MemberService.resolveMember(userId, {
+          cohortId,
+          conversationId
+        });
+        if (!cohortMember) throw new UnauthorizedError("CohortMember not found");
+        if (cohortId) {
+          const message = await prisma.message.findFirst({
+            where: {
+              id: messageId,
+              cohortMemberId: cohortMember.id,
+              deleted: false
+            }
+          });
+          if (!message)
+            throw new NotFoundError("Message not found or unauthorized");
+          const updated = await prisma.message.update({
+            where: { id: messageId },
+            data: { content },
+            include: { cohortMember: { include: { profile: true } } }
+          });
+          events.emit(MESSAGE_EVENTS.UPDATED, {
+            message: updated,
+            type: "channel",
+            contextId: message.channelId
+          });
+          return updated;
+        } else if (conversationId) {
+          const message = await prisma.directMessage.findFirst({
+            where: {
+              id: messageId,
+              cohortMemberId: cohortMember.id,
+              deleted: false
+            }
+          });
+          if (!message)
+            throw new NotFoundError("Message not found or unauthorized");
+          const updated = await prisma.directMessage.update({
+            where: { id: messageId },
+            data: { content },
+            include: { cohortMember: { include: { profile: true } } }
+          });
+          events.emit(MESSAGE_EVENTS.UPDATED, {
+            message: updated,
+            type: "direct",
+            contextId: conversationId
+          });
+          return updated;
+        }
+        throw new BadRequestError(
+          "Context missing (cohortId or conversationId required)"
+        );
+      }
+      /**
+       * Delete a message (Polymorphic)
+       */
+      static async deleteMessage(payload) {
+        const { messageId, userId, cohortId, conversationId } = payload;
+        const cohortMember = await MemberService.resolveMember(userId, {
+          cohortId,
+          conversationId
+        });
+        if (!cohortMember) throw new UnauthorizedError("CohortMember not found");
+        if (cohortId) {
+          const message = await prisma.message.findFirst({
+            where: { id: messageId },
+            include: { cohortMember: true }
+          });
+          if (!message || message.deleted)
+            throw new NotFoundError("Message not found");
+          const canDelete = message.cohortMemberId === cohortMember.id || ["ADMIN", "MODERATOR"].includes(cohortMember.role);
+          if (!canDelete)
+            throw new UnauthorizedError("Unauthorized to delete this message");
+          const deleted = await prisma.message.update({
+            where: { id: messageId },
+            data: {
+              fileUrl: null,
+              content: "This message has been deleted.",
+              deleted: true
+            },
+            include: { cohortMember: { include: { profile: true } } }
+          });
+          events.emit(MESSAGE_EVENTS.UPDATED, {
+            message: deleted,
+            type: "channel",
+            contextId: message.channelId
+          });
+          return deleted;
+        } else if (conversationId) {
+          const message = await prisma.directMessage.findFirst({
+            where: { id: messageId, conversationId }
+          });
+          if (!message || message.deleted)
+            throw new NotFoundError("Message not found");
+          if (message.cohortMemberId !== cohortMember.id)
+            throw new UnauthorizedError("Unauthorized to delete this message");
+          const deleted = await prisma.directMessage.update({
+            where: { id: messageId },
+            data: {
+              fileUrl: null,
+              content: "This message has been deleted.",
+              deleted: true
+            },
+            include: { cohortMember: { include: { profile: true } } }
+          });
+          events.emit(MESSAGE_EVENTS.UPDATED, {
+            message: deleted,
+            type: "direct",
+            contextId: conversationId
+          });
+          return deleted;
+        }
+        throw new BadRequestError(
+          "Context missing (cohortId or conversationId required)"
+        );
+      }
+    };
+    findOrCreateConversation = async (cohortMemberOneId, cohortMemberTwoId) => {
+      let conversation = await findConversation(
+        cohortMemberOneId,
+        cohortMemberTwoId
+      );
+      if (!conversation) {
+        conversation = await createNewConversation(
+          cohortMemberOneId,
+          cohortMemberTwoId
+        );
+      }
+      return conversation;
+    };
+    findConversation = async (cohortMemberOneId, cohortMemberTwoId) => {
+      try {
+        return await prisma.conversation.findFirst({
+          where: {
+            OR: [
+              { AND: [{ cohortMemberOneId }, { cohortMemberTwoId }] },
+              {
+                AND: [
+                  { cohortMemberOneId: cohortMemberTwoId },
+                  { cohortMemberTwoId: cohortMemberOneId }
+                ]
+              }
+            ]
+          },
+          include: {
+            cohortMemberOne: {
+              include: {
+                profile: true
+              }
+            },
+            cohortMemberTwo: {
+              include: {
+                profile: true
+              }
+            }
+          }
+        });
+      } catch (error) {
+        console.error("Error finding conversation:", error);
+        return null;
+      }
+    };
+    createNewConversation = async (cohortMemberOneId, cohortMemberTwoId) => {
+      try {
+        return await prisma.conversation.create({
+          data: {
+            cohortMemberOneId,
+            cohortMemberTwoId
+          },
+          include: {
+            cohortMemberOne: {
+              include: {
+                profile: true
+              }
+            },
+            cohortMemberTwo: {
+              include: {
+                profile: true
+              }
+            }
+          }
+        });
+      } catch {
+        return null;
+      }
+    };
+    ReactionService = class {
+      /**
+       * Add a reaction to a message
+       */
+      static async addReaction(payload) {
+        const { userId, emoji, messageId, directMessageId } = payload;
+        const profile = await getProfileByUserId(userId);
+        if (!profile) throw new NotFoundError("Profile not found");
+        let authorProfileId = null;
+        let authorUserId = null;
+        if (messageId) {
+          const message = await prisma.message.findUnique({
+            where: { id: messageId },
+            include: { cohortMember: { include: { profile: true } } }
+          });
+          authorProfileId = message?.cohortMember.profile.id || null;
+          authorUserId = message?.cohortMember.profile.userId || null;
+        } else if (directMessageId) {
+          const directMessage = await prisma.directMessage.findUnique({
+            where: { id: directMessageId },
+            include: { cohortMember: { include: { profile: true } } }
+          });
+          authorProfileId = directMessage?.cohortMember.profile.id || null;
+          authorUserId = directMessage?.cohortMember.profile.userId || null;
+        }
+        const existingReaction = await prisma.reaction.findFirst({
+          where: {
+            profileId: profile.id,
+            messageId,
+            directMessageId
+          }
+        });
+        if (existingReaction) {
+          if (existingReaction.emoji === emoji) {
+            await prisma.reaction.delete({
+              where: { id: existingReaction.id }
+            });
+            events.emit(REACTION_EVENTS.REMOVED, { reaction: existingReaction });
+            return null;
+          }
+          const oldReaction = { ...existingReaction };
+          const updatedReaction = await prisma.reaction.update({
+            where: { id: existingReaction.id },
+            data: { emoji },
+            include: {
+              profile: {
+                select: { id: true, name: true, imageUrl: true }
+              }
+            }
+          });
+          events.emit(REACTION_EVENTS.REMOVED, { reaction: oldReaction });
+          events.emit(REACTION_EVENTS.ADDED, {
+            reaction: updatedReaction,
+            authorProfileId,
+            authorUserId,
+            senderProfileId: profile.id
+          });
+          return updatedReaction;
+        }
+        const reaction = await prisma.reaction.create({
+          data: {
+            emoji,
+            profileId: profile.id,
+            messageId,
+            directMessageId
+          },
+          include: {
+            profile: {
+              select: { id: true, name: true, imageUrl: true }
+            }
+          }
+        });
+        events.emit(REACTION_EVENTS.ADDED, {
+          reaction,
+          authorProfileId,
+          authorUserId,
+          senderProfileId: profile.id
+        });
+        return reaction;
+      }
+      /**
+       * Remove a reaction
+       */
+      static async removeReaction(payload) {
+        const { userId, reactionId } = payload;
+        const profile = await getProfileByUserId(userId);
+        if (!profile) throw new NotFoundError("Profile not found");
+        const reaction = await prisma.reaction.delete({
+          where: {
+            id: reactionId,
+            profileId: profile.id
+          }
+        });
+        events.emit(REACTION_EVENTS.REMOVED, { reaction });
+        return reaction;
+      }
+    };
+  }
+});
+
 // src/server.ts
 var server_exports = {};
 __export(server_exports, {
@@ -34,50 +667,23 @@ __export(server_exports, {
 module.exports = __toCommonJS(server_exports);
 var import_dotenv = __toESM(require("dotenv"), 1);
 var import_http = __toESM(require("http"), 1);
-
-// src/core/logger.ts
-var import_winston = __toESM(require("winston"), 1);
-var logger = import_winston.default.createLogger({
-  level: "info",
-  format: import_winston.default.format.json(),
-  defaultMeta: { service: "user-service" },
-  transports: []
-});
-if (process.env.NODE_ENV !== "production") {
-  logger.add(
-    new import_winston.default.transports.Console({
-      format: import_winston.default.format.simple()
-    })
-  );
-} else {
-  logger.add(
-    new import_winston.default.transports.Console({
-      format: import_winston.default.format.json()
-    })
-  );
-}
-var logger_default = logger;
+init_logger();
 
 // src/config/routes.ts
-var import_express9 = __toESM(require("express"), 1);
+var import_express5 = __toESM(require("express"), 1);
 var import_node2 = require("better-auth/node");
 
-// src/core/auth.ts
+// src/core/auth/config.ts
 var import_better_auth = require("better-auth");
 var import_prisma = require("better-auth/adapters/prisma");
 var import_plugins = require("better-auth/plugins");
 var import_passkey = require("@better-auth/passkey");
+var import_stripe = require("@better-auth/stripe");
+var import_stripe2 = require("stripe");
+init_db();
+init_logger();
 
-// src/core/db.ts
-var import_client = require("@prisma/client");
-var prismaClientSingleton = () => {
-  return new import_client.PrismaClient();
-};
-var globalForPrisma = globalThis;
-var prisma = globalForPrisma.prisma ?? prismaClientSingleton();
-if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = prisma;
-
-// src/utils/permissions.ts
+// src/shared/utils/permissions.ts
 var import_access = require("better-auth/plugins/access");
 var import_access2 = require("better-auth/plugins/admin/access");
 var statements = {
@@ -141,7 +747,7 @@ async function sendEmailAction({
   }
 }
 
-// src/libs/argon2.ts
+// src/shared/libs/argon2.ts
 var import_argon2 = require("@node-rs/argon2");
 var opts = {
   memoryCost: 19456,
@@ -159,7 +765,7 @@ async function verifyPassword(data) {
   return result;
 }
 
-// src/core/auth.ts
+// src/core/auth/config.ts
 var auth = (0, import_better_auth.betterAuth)({
   appName: "Aura",
   basePath: "/api/auth",
@@ -265,11 +871,11 @@ var auth = (0, import_better_auth.betterAuth)({
       const value = await prisma.verification.findUnique({
         where: { identifier: key }
       });
-      console.log(`[SecondaryStorage] GET key=${key} found=${!!value}`);
+      logger_default.info(`[SecondaryStorage] GET key=${key} found=${!!value}`);
       return value?.value || null;
     },
     set: async (key, value, expiresAt) => {
-      console.log(`[SecondaryStorage] SET key=${key} expires=${expiresAt}`);
+      logger_default.info(`[SecondaryStorage] SET key=${key} expires=${expiresAt}`);
       await prisma.verification.upsert({
         where: { identifier: key },
         create: {
@@ -284,7 +890,7 @@ var auth = (0, import_better_auth.betterAuth)({
       });
     },
     delete: async (key) => {
-      console.log(`[SecondaryStorage] DELETE key=${key}`);
+      logger_default.info(`[SecondaryStorage] DELETE key=${key}`);
       await prisma.verification.deleteMany({
         where: { identifier: key }
       });
@@ -323,6 +929,24 @@ var auth = (0, import_better_auth.betterAuth)({
       otpOptions: {}
     }),
     (0, import_passkey.passkey)(),
+    (0, import_plugins.organization)(),
+    (0, import_stripe.stripe)({
+      stripeClient: new import_stripe2.Stripe(process.env.STRIPE_KEY || "sk_test_"),
+      stripeWebhookSecret: process.env.STRIPE_WEBHOOK_SECRET,
+      subscription: {
+        enabled: true,
+        plans: [
+          {
+            name: "Plus",
+            priceId: process.env.STRIPE_PLUS_PRICE_ID || "price_1RoxnJHmTADgihIthZTLmrPn"
+          },
+          {
+            name: "Pro",
+            priceId: process.env.STRIPE_PRO_PRICE_ID || "price_1RoxnRHmTADgihIt4y8c0lVE"
+          }
+        ]
+      }
+    }),
     (0, import_plugins.customSession)(async ({ user, session }) => {
       return {
         session: {
@@ -343,19 +967,13 @@ var auth = (0, import_better_auth.betterAuth)({
   ]
 });
 
-// src/middlewares/authMiddleware.ts
+// src/core/auth/middleware.ts
 var import_node = require("better-auth/node");
+init_logger();
 var authMiddleware = async (req, res, next) => {
-  console.log(
-    `[AuthMiddleware] ${req.method} ${req.url} - Checking for session...`
-  );
   const session = await auth.api.getSession({
     headers: (0, import_node.fromNodeHeaders)(req.headers)
   });
-  console.log(
-    "[AuthMiddleware] Session lookup result:",
-    session ? `FOUND (User: ${session.user.email})` : "NO SESSION FOUND"
-  );
   if (session) {
     res.locals.userId = session.user.id;
     res.locals.user = session.user;
@@ -363,28 +981,23 @@ var authMiddleware = async (req, res, next) => {
   }
   const internalSecret = req.headers["x-internal-secret"];
   const bridgedUserId = req.headers["x-user-id"];
-  console.log("[Auth] Bridged Auth Attempt:", {
-    hasSecret: !!internalSecret,
-    hasUserId: !!bridgedUserId,
-    secretMatch: internalSecret === process.env.SERVER_INTERNAL_SECRET
-  });
   if (internalSecret && internalSecret === process.env.SERVER_INTERNAL_SECRET && bridgedUserId) {
     res.locals.userId = bridgedUserId;
     return next();
   }
   if (process.env.NODE_ENV !== "production" && bridgedUserId) {
-    console.warn(
+    logger_default.warn(
       "[Auth] WARNING: Using insecure fallback userId:",
       bridgedUserId
     );
     res.locals.userId = bridgedUserId;
     return next();
   }
-  console.error("[Auth] Authentication FAILED for:", req.url);
+  logger_default.error("[Auth] Authentication FAILED for:", req.url);
   return res.status(401).json({ error: "Unauthorized - No valid session or secure bridge found" });
 };
 
-// src/utils/api-response.ts
+// src/shared/utils/api-response.ts
 var ApiResponse = class {
   /**
    * Send a success response
@@ -408,35 +1021,9 @@ var ApiResponse = class {
   }
 };
 
-// src/utils/errors.ts
-var AppError = class extends Error {
-  statusCode;
-  isOperational;
-  constructor(message, statusCode = 500, isOperational = true) {
-    super(message);
-    this.statusCode = statusCode;
-    this.isOperational = isOperational;
-    Object.setPrototypeOf(this, new.target.prototype);
-    Error.captureStackTrace(this, this.constructor);
-  }
-};
-var BadRequestError = class extends AppError {
-  constructor(message = "Bad Request") {
-    super(message, 400);
-  }
-};
-var UnauthorizedError = class extends AppError {
-  constructor(message = "Unauthorized") {
-    super(message, 401);
-  }
-};
-var NotFoundError = class extends AppError {
-  constructor(message = "Resource not found") {
-    super(message, 404);
-  }
-};
-
-// src/middlewares/errorHandler.ts
+// src/shared/middlewares/errorHandler.ts
+init_errors();
+init_logger();
 var errorHandler = (err, req, res, next) => {
   let statusCode = err.statusCode || 500;
   let message = err.message || "Something went wrong";
@@ -445,7 +1032,7 @@ var errorHandler = (err, req, res, next) => {
     message = err.message;
   }
   if (statusCode >= 500) {
-    console.error(
+    logger_default.error(
       `[Error] ${req.method} ${req.url} - Status: ${statusCode}`,
       err
     );
@@ -453,331 +1040,124 @@ var errorHandler = (err, req, res, next) => {
   ApiResponse.error(res, message, statusCode, err.stack);
 };
 
-// src/routes/messages.ts
+// src/core/messaging/routes.ts
 var import_express = require("express");
 
-// src/services/member.ts
-var MemberService = class {
+// src/core/messaging/controllers/message.controller.ts
+init_db();
+init_logger();
+init_services3();
+
+// src/core/messaging/pin.service.ts
+init_db();
+init_services();
+init_errors();
+var PinService = class {
   /**
-   * Resolves a member context from either serverId or conversationId
+   * Pin a message
    */
-  static async resolveMember(userId, options) {
-    const { serverId, conversationId } = options;
-    if (serverId) {
-      return await prisma.member.findFirst({
-        where: {
-          profile: { userId },
-          serverId
-        }
+  static async pinMessage(payload) {
+    return this.setPinStatus({ ...payload, isPinned: true });
+  }
+  /**
+   * Unpin a message
+   */
+  static async unpinMessage(payload) {
+    return this.setPinStatus({ ...payload, isPinned: false });
+  }
+  /**
+   * Shared logic for pinning/unpinning (DRY)
+   */
+  static async setPinStatus(payload) {
+    const { messageId, userId, isPinned, cohortId, conversationId } = payload;
+    const cohortMember = await MemberService.resolveMember(userId, {
+      cohortId,
+      conversationId
+    });
+    if (!cohortMember) throw new UnauthorizedError("CohortMember not found");
+    if (cohortId) {
+      if (!["ADMIN", "MODERATOR"].includes(cohortMember.role)) {
+        throw new UnauthorizedError(
+          "Insufficient permissions to manage pinned messages"
+        );
+      }
+      const message = await prisma.message.findFirst({
+        where: { id: messageId, channel: { cohortId } }
       });
-    }
-    if (conversationId) {
-      const conversation = await prisma.conversation.findUnique({
-        where: { id: conversationId },
+      if (!message) throw new NotFoundError("Message not found in this server");
+      return await prisma.message.update({
+        where: { id: messageId },
+        data: { isPinned },
         include: {
-          memberOne: true,
-          memberTwo: true
-        }
-      });
-      if (!conversation) return null;
-      return await prisma.member.findFirst({
-        where: {
-          profile: { userId },
-          OR: [
-            { id: conversation.memberOneId },
-            { id: conversation.memberTwoId }
-          ]
-        }
-      });
-    }
-    return null;
-  }
-};
-
-// src/core/events.ts
-var import_events = require("events");
-var events = new import_events.EventEmitter();
-var MESSAGE_EVENTS = {
-  CREATED: "message:created",
-  UPDATED: "message:updated",
-  DELETED: "message:deleted"
-};
-var REACTION_EVENTS = {
-  ADDED: "reaction:added",
-  REMOVED: "reaction:removed"
-};
-
-// src/services/message.ts
-var MessageService = class {
-  /**
-   * Create a channel message
-   */
-  static async createChannelMessage(payload) {
-    const {
-      content,
-      fileUrl,
-      isEncrypted,
-      parentId,
-      serverId,
-      channelId,
-      userId
-    } = payload;
-    const member = await MemberService.resolveMember(userId, { serverId });
-    if (!member) {
-      throw new NotFoundError("Member not found in this server");
-    }
-    const message = await prisma.message.create({
-      data: {
-        content,
-        fileUrl: fileUrl || null,
-        channelId,
-        memberId: member.id,
-        isEncrypted: !!isEncrypted,
-        parentId: parentId || null
-      },
-      include: {
-        member: {
-          include: {
-            profile: true
+          cohortMember: { include: { profile: true } },
+          poll: {
+            include: {
+              options: {
+                include: {
+                  votes: true,
+                  _count: { select: { votes: true } }
+                }
+              }
+            }
           }
         }
-      }
-    });
-    events.emit(MESSAGE_EVENTS.CREATED, {
-      message,
-      type: "channel",
-      contextId: channelId
-    });
-    return message;
-  }
-  /**
-   * Create a direct message
-   */
-  static async createDirectMessage(payload) {
-    const { content, fileUrl, isEncrypted, parentId, conversationId, userId } = payload;
-    const member = await MemberService.resolveMember(userId, {
-      conversationId
-    });
-    if (!member) {
-      throw new NotFoundError("Member not found in conversation");
-    }
-    const message = await prisma.directMessage.create({
-      data: {
-        content,
-        fileUrl: fileUrl || null,
-        conversationId,
-        memberId: member.id,
-        isEncrypted: !!isEncrypted,
-        parentId: parentId || null
-      },
-      include: {
-        member: {
-          include: {
-            profile: true
-          }
-        }
-      }
-    });
-    events.emit(MESSAGE_EVENTS.CREATED, {
-      message,
-      type: "direct",
-      contextId: conversationId
-    });
-    return message;
-  }
-  /**
-   * Update a message (Polymorphic)
-   */
-  static async updateMessage(payload) {
-    const { messageId, content, userId, serverId, conversationId } = payload;
-    const member = await MemberService.resolveMember(userId, {
-      serverId,
-      conversationId
-    });
-    if (!member) throw new UnauthorizedError("Member not found");
-    if (serverId) {
-      const message = await prisma.message.findFirst({
-        where: { id: messageId, memberId: member.id, deleted: false }
       });
-      if (!message)
-        throw new NotFoundError("Message not found or unauthorized");
-      const updated = await prisma.message.update({
-        where: { id: messageId },
-        data: { content },
-        include: { member: { include: { profile: true } } }
-      });
-      events.emit(MESSAGE_EVENTS.UPDATED, {
-        message: updated,
-        type: "channel",
-        contextId: message.channelId
-      });
-      return updated;
-    } else if (conversationId) {
-      const message = await prisma.directMessage.findFirst({
-        where: { id: messageId, memberId: member.id, deleted: false }
-      });
-      if (!message)
-        throw new NotFoundError("Message not found or unauthorized");
-      const updated = await prisma.directMessage.update({
-        where: { id: messageId },
-        data: { content },
-        include: { member: { include: { profile: true } } }
-      });
-      events.emit(MESSAGE_EVENTS.UPDATED, {
-        message: updated,
-        type: "direct",
-        contextId: conversationId
-      });
-      return updated;
-    }
-    throw new BadRequestError(
-      "Context missing (serverId or conversationId required)"
-    );
-  }
-  /**
-   * Delete a message (Polymorphic)
-   */
-  static async deleteMessage(payload) {
-    const { messageId, userId, serverId, conversationId } = payload;
-    const member = await MemberService.resolveMember(userId, {
-      serverId,
-      conversationId
-    });
-    if (!member) throw new UnauthorizedError("Member not found");
-    if (serverId) {
-      const message = await prisma.message.findFirst({
-        where: { id: messageId },
-        include: { member: true }
-      });
-      if (!message || message.deleted)
-        throw new NotFoundError("Message not found");
-      const canDelete = message.memberId === member.id || ["ADMIN", "MODERATOR"].includes(member.role);
-      if (!canDelete)
-        throw new UnauthorizedError("Unauthorized to delete this message");
-      const deleted = await prisma.message.update({
-        where: { id: messageId },
-        data: {
-          fileUrl: null,
-          content: "This message has been deleted.",
-          deleted: true
-        },
-        include: { member: { include: { profile: true } } }
-      });
-      events.emit(MESSAGE_EVENTS.UPDATED, {
-        message: deleted,
-        type: "channel",
-        contextId: message.channelId
-      });
-      return deleted;
     } else if (conversationId) {
       const message = await prisma.directMessage.findFirst({
         where: { id: messageId, conversationId }
       });
-      if (!message || message.deleted)
-        throw new NotFoundError("Message not found");
-      if (message.memberId !== member.id)
-        throw new UnauthorizedError("Unauthorized to delete this message");
-      const deleted = await prisma.directMessage.update({
+      if (!message)
+        throw new NotFoundError("Message not found in this conversation");
+      return await prisma.directMessage.update({
         where: { id: messageId },
-        data: {
-          fileUrl: null,
-          content: "This message has been deleted.",
-          deleted: true
-        },
-        include: { member: { include: { profile: true } } }
+        data: { isPinned },
+        include: {
+          cohortMember: { include: { profile: true } },
+          poll: {
+            include: {
+              options: {
+                include: {
+                  votes: true,
+                  _count: { select: { votes: true } }
+                }
+              }
+            }
+          }
+        }
       });
-      events.emit(MESSAGE_EVENTS.UPDATED, {
-        message: deleted,
-        type: "direct",
-        contextId: conversationId
-      });
-      return deleted;
     }
     throw new BadRequestError(
-      "Context missing (serverId or conversationId required)"
+      "Context missing (cohortId or conversationId required)"
     );
   }
 };
 
-// src/services/conversation.ts
-var findOrCreateConversation = async (memberOneId, memberTwoId) => {
-  let conversation = await findConversation(memberOneId, memberTwoId) || await findConversation(memberTwoId, memberOneId);
-  if (!conversation) {
-    conversation = await createNewConversation(memberOneId, memberTwoId);
-  }
-  return conversation;
-};
-var findConversation = async (memberOneId, memberTwoId) => {
-  try {
-    return await prisma.conversation.findFirst({
-      where: {
-        AND: [{ memberOneId }, { memberTwoId }]
-      },
-      include: {
-        memberOne: {
-          include: {
-            profile: true
-          }
-        },
-        memberTwo: {
-          include: {
-            profile: true
-          }
-        }
-      }
-    });
-  } catch (error) {
-    console.error("Error finding conversation:", error);
-    return null;
-  }
-};
-var createNewConversation = async (memberOneId, memberTwoId) => {
-  try {
-    return await prisma.conversation.create({
-      data: {
-        memberOneId,
-        memberTwoId
-      },
-      include: {
-        memberOne: {
-          include: {
-            profile: true
-          }
-        },
-        memberTwo: {
-          include: {
-            profile: true
-          }
-        }
-      }
-    });
-  } catch {
-    return null;
-  }
-};
-
-// src/controllers/message.ts
+// src/core/messaging/controllers/message.controller.ts
+init_events();
 var createChannelMessage = async (req, res) => {
   try {
-    const { content, fileUrl, isEncrypted, parentId } = req.body;
-    const { serverId, channelId } = req.query;
+    const { content, fileUrl, isEncrypted, parentId, poll } = req.body;
+    const { cohortId, channelId } = req.query;
     const userId = res.locals.userId;
-    if (!serverId || !channelId) {
-      return ApiResponse.error(res, "Server ID or Channel ID missing", 400);
+    if (!cohortId || !channelId) {
+      return ApiResponse.error(res, "Cohort ID or Channel ID missing", 400);
     }
+    console.time(`[CREATE_CHANNEL_MESSAGE] Total: ${userId}`);
     const message = await MessageService.createChannelMessage({
       content,
       fileUrl,
       isEncrypted,
       parentId,
-      serverId,
+      cohortId,
       channelId,
-      userId
+      userId,
+      poll
     });
+    console.timeEnd(`[CREATE_CHANNEL_MESSAGE] Total: ${userId}`);
     return ApiResponse.success(res, message, "Message created", 201);
   } catch (error) {
     logger_default.error("[CREATE_CHANNEL_MESSAGE]", error);
-    const status = error.message === "Member not found in this server" ? 404 : 500;
+    const status = error.message === "CohortMember not found in this server" ? 404 : 500;
     return ApiResponse.error(
       res,
       error.message || "Internal server error",
@@ -787,7 +1167,7 @@ var createChannelMessage = async (req, res) => {
 };
 var createDirectMessage = async (req, res) => {
   try {
-    const { content, fileUrl, isEncrypted, parentId } = req.body;
+    const { content, fileUrl, isEncrypted, parentId, poll } = req.body;
     const { conversationId } = req.query;
     const userId = res.locals.userId;
     if (!conversationId) {
@@ -799,12 +1179,13 @@ var createDirectMessage = async (req, res) => {
       isEncrypted,
       parentId,
       conversationId,
-      userId
+      userId,
+      poll
     });
     return ApiResponse.success(res, message, "Direct message created", 201);
   } catch (error) {
     logger_default.error("[CREATE_DIRECT_MESSAGE]", error);
-    const status = error.message === "Member not found in conversation" ? 404 : 500;
+    const status = error.message === "CohortMember not found in conversation" ? 404 : 500;
     return ApiResponse.error(
       res,
       error.message || "Internal server error",
@@ -816,7 +1197,7 @@ var updateMessage = async (req, res) => {
   try {
     const { messageId } = req.params;
     const { content } = req.body;
-    const { serverId, conversationId } = req.query;
+    const { cohortId, conversationId } = req.query;
     const userId = res.locals.userId;
     if (!content) {
       return ApiResponse.error(res, "Content missing", 400);
@@ -825,7 +1206,7 @@ var updateMessage = async (req, res) => {
       messageId,
       content,
       userId,
-      serverId,
+      cohortId,
       conversationId
     });
     return ApiResponse.success(res, updatedMessage, "Message updated");
@@ -837,12 +1218,12 @@ var updateMessage = async (req, res) => {
 var deleteMessage = async (req, res) => {
   try {
     const { messageId } = req.params;
-    const { serverId, conversationId } = req.query;
+    const { cohortId, conversationId } = req.query;
     const userId = res.locals.userId;
     const deletedMessage = await MessageService.deleteMessage({
       messageId,
       userId,
-      serverId,
+      cohortId,
       conversationId
     });
     return ApiResponse.success(res, deletedMessage, "Message deleted");
@@ -851,50 +1232,32 @@ var deleteMessage = async (req, res) => {
     return ApiResponse.error(res, error.message || "Internal server error");
   }
 };
-var getConversation = async (req, res) => {
-  const { receiverId } = req.query;
-  try {
-    const conversation = await findOrCreateConversation(
-      res.locals.userId,
-      receiverId
-    );
-    return ApiResponse.success(res, conversation);
-  } catch (err) {
-    logger_default.error(err);
-    return ApiResponse.error(res, err.message);
-  }
-};
 var getMessages = async (req, res) => {
-  const { receiverId, channelId, cursor } = req.query;
+  const { channelId, cursor } = req.query;
   const MESSAGES_BATCH = 10;
   try {
-    let messages = [];
-    if (channelId) {
-      messages = await prisma.message.findMany({
-        take: MESSAGES_BATCH,
-        ...cursor && { skip: 1, cursor: { id: cursor } },
-        where: { channelId },
-        include: { member: { include: { profile: true } } },
-        orderBy: { createdAt: "desc" }
-      });
-    } else if (receiverId) {
-      const conversation = await findOrCreateConversation(
-        res.locals.userId,
-        receiverId
-      );
-      if (!conversation) {
-        return ApiResponse.error(res, "Conversation not found", 404);
-      }
-      messages = await prisma.directMessage.findMany({
-        take: MESSAGES_BATCH,
-        ...cursor && { skip: 1, cursor: { id: cursor } },
-        where: { conversationId: conversation.id },
-        include: { member: { include: { profile: true } } },
-        orderBy: { createdAt: "desc" }
-      });
-    } else {
-      return ApiResponse.error(res, "receiverId or channelId required", 400);
+    if (!channelId) {
+      return ApiResponse.error(res, "Channel ID required", 400);
     }
+    const messages = await prisma.message.findMany({
+      take: MESSAGES_BATCH,
+      ...cursor && { skip: 1, cursor: { id: cursor } },
+      where: { channelId },
+      include: {
+        cohortMember: { include: { profile: true } },
+        poll: {
+          include: {
+            options: {
+              include: {
+                votes: true,
+                _count: { select: { votes: true } }
+              }
+            }
+          }
+        }
+      },
+      orderBy: { createdAt: "desc" }
+    });
     let nextCursor = null;
     if (messages.length === MESSAGES_BATCH) {
       nextCursor = messages[MESSAGES_BATCH - 1].id;
@@ -908,138 +1271,155 @@ var getMessages = async (req, res) => {
     return ApiResponse.error(res, "Internal server error");
   }
 };
-
-// src/middlewares/validationMiddleware.ts
-var validator = (schema) => (req, res, next) => {
+var getDirectMessages = async (req, res) => {
+  const { conversationId, cursor } = req.query;
+  const MESSAGES_BATCH = 10;
   try {
-    schema.parse({
-      body: req.body,
-      query: req.query,
-      params: req.params
+    if (!conversationId) {
+      return ApiResponse.error(res, "Conversation ID missing", 400);
+    }
+    const messages = await prisma.directMessage.findMany({
+      take: MESSAGES_BATCH,
+      ...cursor && { skip: 1, cursor: { id: cursor } },
+      where: {
+        conversationId
+      },
+      include: {
+        cohortMember: {
+          include: {
+            profile: true
+          }
+        },
+        poll: {
+          include: {
+            options: {
+              include: {
+                votes: true,
+                _count: { select: { votes: true } }
+              }
+            }
+          }
+        }
+      },
+      orderBy: {
+        createdAt: "desc"
+      }
     });
-    next();
-  } catch (err) {
-    console.log(err);
-    return res.status(400).send(err.errors);
+    let nextCursor = null;
+    if (messages.length === MESSAGES_BATCH) {
+      nextCursor = messages[MESSAGES_BATCH - 1].id;
+    }
+    return ApiResponse.success(res, {
+      items: messages,
+      nextCursor
+    });
+  } catch (error) {
+    logger_default.error("[GET_DIRECT_MESSAGES]", error);
+    return ApiResponse.error(res, "Internal Error", 500);
   }
 };
-var validationMiddleware_default = validator;
+var pinMessage = async (req, res) => {
+  try {
+    const { messageId } = req.params;
+    const { cohortId, conversationId } = req.query;
+    const userId = res.locals.userId;
+    const message = await PinService.pinMessage({
+      messageId,
+      userId,
+      cohortId,
+      conversationId
+    });
+    events.emit(MESSAGE_EVENTS.UPDATED, {
+      message,
+      type: cohortId ? "channel" : "direct",
+      contextId: cohortId ? message.channelId : message.conversationId
+    });
+    return ApiResponse.success(res, message, "Message pinned");
+  } catch (error) {
+    logger_default.error("[PIN_MESSAGE]", error);
+    return ApiResponse.error(res, error.message || "Internal server error");
+  }
+};
+var unpinMessage = async (req, res) => {
+  try {
+    const { messageId } = req.params;
+    const { cohortId, conversationId } = req.query;
+    const userId = res.locals.userId;
+    const message = await PinService.unpinMessage({
+      messageId,
+      userId,
+      cohortId,
+      conversationId
+    });
+    events.emit(MESSAGE_EVENTS.UPDATED, {
+      message,
+      type: cohortId ? "channel" : "direct",
+      contextId: cohortId ? message.channelId : message.conversationId
+    });
+    return ApiResponse.success(res, message, "Message unpinned");
+  } catch (error) {
+    logger_default.error("[UNPIN_MESSAGE]", error);
+    return ApiResponse.error(res, error.message || "Internal server error");
+  }
+};
 
-// src/schemas/message.schema.ts
-var import_zod = require("zod");
-var createChannelMessageSchema = import_zod.z.object({
-  body: import_zod.z.object({
-    content: import_zod.z.string().min(1).max(5e3),
-    fileUrl: import_zod.z.string().url().optional().nullable(),
-    isEncrypted: import_zod.z.boolean().optional()
-  }),
-  query: import_zod.z.object({
-    serverId: import_zod.z.string().min(1),
-    channelId: import_zod.z.string().min(1)
-  })
-});
-var createDirectMessageSchema = import_zod.z.object({
-  body: import_zod.z.object({
-    content: import_zod.z.string().min(1).max(5e3),
-    fileUrl: import_zod.z.string().url().optional().nullable(),
-    isEncrypted: import_zod.z.boolean().optional()
-  }),
-  query: import_zod.z.object({
-    conversationId: import_zod.z.string().min(1)
-  })
-});
-var updateMessageSchema = import_zod.z.object({
-  params: import_zod.z.object({
-    messageId: import_zod.z.string().min(1)
-  }),
-  body: import_zod.z.object({
-    content: import_zod.z.string().min(1).max(5e3)
-  }),
-  query: import_zod.z.object({
-    serverId: import_zod.z.string().optional(),
-    channelId: import_zod.z.string().optional(),
-    conversationId: import_zod.z.string().optional()
-  })
-});
-var deleteMessageSchema = import_zod.z.object({
-  params: import_zod.z.object({
-    messageId: import_zod.z.string().min(1)
-  }),
-  query: import_zod.z.object({
-    serverId: import_zod.z.string().optional(),
-    channelId: import_zod.z.string().optional(),
-    conversationId: import_zod.z.string().optional()
-  })
-});
-var conversationSchema = import_zod.z.object({
-  query: import_zod.z.object({
-    receiverId: import_zod.z.string().min(1)
-  })
-});
-var sendMessageSchema = import_zod.z.object({
-  body: import_zod.z.object({
-    message: import_zod.z.string().min(1)
-  }),
-  query: import_zod.z.object({
-    receiverId: import_zod.z.string().min(1)
-  })
-});
-
-// src/routes/messages.ts
-var router = (0, import_express.Router)();
-router.post(
-  "/channel",
-  validationMiddleware_default(createChannelMessageSchema),
-  createChannelMessage
-);
-router.post(
-  "/direct",
-  validationMiddleware_default(createDirectMessageSchema),
-  createDirectMessage
-);
-router.patch("/:messageId", validationMiddleware_default(updateMessageSchema), updateMessage);
-router.delete("/:messageId", validationMiddleware_default(deleteMessageSchema), deleteMessage);
-router.get("/conversation", getConversation);
-router.get("/", getMessages);
-var messages_default = router;
-
-// src/routes/conversations.ts
-var import_express2 = require("express");
-
-// src/controllers/conversation.ts
+// src/core/messaging/controllers/conversation.controller.ts
+init_db();
+init_logger();
+init_services3();
+var getConversation = async (req, res) => {
+  const { receiverId } = req.query;
+  try {
+    const conversation = await findOrCreateConversation(
+      res.locals.userId,
+      receiverId
+    );
+    return ApiResponse.success(res, conversation);
+  } catch (err) {
+    logger_default.error(err);
+    return ApiResponse.error(res, err.message);
+  }
+};
 var getConversations = async (req, res) => {
   try {
-    const { serverId } = req.query;
+    const { cohortId } = req.query;
     const userId = res.locals.userId;
     const profile = await prisma.profile.findFirst({
       where: {
         userId
       },
-      include: {
-        members: true
+      select: {
+        id: true,
+        userId: true,
+        cohortMembers: cohortId ? {
+          where: { cohortId },
+          select: { id: true, cohortId: true }
+        } : {
+          select: { id: true, cohortId: true }
+        }
       }
     });
-    console.log(
-      `[ConversationController] Profile lookup for userId=${userId}:`,
-      profile ? "FOUND" : "NOT FOUND"
-    );
     if (!profile) {
-      console.warn(
-        `[ConversationController] No profile found for userId=${userId} in database.`
+      logger_default.warn(
+        `[ConversationController] No profile found for userId=${userId}`
       );
       return ApiResponse.error(res, "Profile not found", 404);
     }
     let memberIds = [];
-    if (serverId) {
-      const currentMember = profile.members.find(
-        (m) => m.serverId === serverId
+    if (cohortId) {
+      const currentMember = profile.cohortMembers.find(
+        (m) => m.cohortId === cohortId
       );
       if (!currentMember) {
-        return ApiResponse.error(res, "Member not found in this server", 404);
+        return ApiResponse.error(
+          res,
+          "CohortMember not found in this server",
+          404
+        );
       }
       memberIds = [currentMember.id];
     } else {
-      memberIds = profile.members.map((m) => m.id);
+      memberIds = profile.cohortMembers.map((m) => m.id);
     }
     if (memberIds.length === 0) {
       return ApiResponse.success(res, {
@@ -1050,22 +1430,21 @@ var getConversations = async (req, res) => {
     const conversations = await prisma.conversation.findMany({
       where: {
         OR: [
-          { memberOneId: { in: memberIds } },
-          { memberTwoId: { in: memberIds } }
+          { cohortMemberOneId: { in: memberIds } },
+          { cohortMemberTwoId: { in: memberIds } }
         ]
       },
       include: {
-        memberOne: {
+        cohortMemberOne: {
           include: {
             profile: true,
-            server: true
-            // Include server info so user knows which server the DM is from
+            cohort: true
           }
         },
-        memberTwo: {
+        cohortMemberTwo: {
           include: {
             profile: true,
-            server: true
+            cohort: true
           }
         },
         directMessages: {
@@ -1086,90 +1465,14 @@ var getConversations = async (req, res) => {
       currentMemberIds: memberIds
     });
   } catch (error) {
-    console.error("[GET_CONVERSATIONS]", error);
+    logger_default.error("[GET_CONVERSATIONS]", error);
     return ApiResponse.error(res, "Internal server error");
   }
 };
 
-// src/routes/conversations.ts
-var router2 = (0, import_express2.Router)();
-router2.get("/", getConversations);
-var conversations_default = router2;
-
-// src/routes/link-preview.ts
-var import_express3 = require("express");
-
-// src/controllers/link-preview.ts
-var import_axios = __toESM(require("axios"), 1);
-var getLinkPreview = async (req, res) => {
-  try {
-    const { url } = req.query;
-    if (!url || typeof url !== "string") {
-      return ApiResponse.error(res, "URL is required", 400);
-    }
-    const apiKey = process.env.OPENGRAPH_IO_KEY;
-    if (!apiKey) {
-      logger_default.error(
-        "[LinkPreview] OPENGRAPH_IO_KEY is missing in environment variables."
-      );
-      return ApiResponse.error(
-        res,
-        "Link preview service is not configured.",
-        500
-      );
-    }
-    logger_default.info(`[LinkPreview] Fetching from OpenGraph.io for: ${url}`);
-    const opengraphUrl = `https://opengraph.io/api/1.1/site/${encodeURIComponent(url)}?app_id=${apiKey}`;
-    const response = await import_axios.default.get(opengraphUrl, { timeout: 1e4 });
-    const data = response.data;
-    if (data.error) {
-      logger_default.error(`[OpenGraph.io] Error: ${data.error.message}`);
-      return ApiResponse.error(res, data.error.message, 400);
-    }
-    const hybrid = data.hybridGraph || {};
-    const openGraph = data.openGraph || {};
-    const htmlInferred = data.htmlInferred || {};
-    let fallbackTitle = url;
-    try {
-      fallbackTitle = new URL(url).hostname;
-    } catch (e) {
-    }
-    return ApiResponse.success(
-      res,
-      {
-        title: hybrid.title || openGraph.title || htmlInferred.title || fallbackTitle,
-        description: hybrid.description || openGraph.description || htmlInferred.description || "",
-        image: hybrid.image || openGraph.image || htmlInferred.image || null,
-        favIcon: data.favicon || null,
-        url: data.url || url
-      },
-      "Link preview fetched"
-    );
-  } catch (error) {
-    if (import_axios.default.isAxiosError(error) && error.response) {
-      logger_default.error(
-        `[LinkPreview] OpenGraph.io returned ${error.response.status}: ${JSON.stringify(error.response.data)}`
-      );
-      return ApiResponse.error(
-        res,
-        error.response.data.error?.message || "External service error",
-        error.response.status
-      );
-    }
-    logger_default.error(`[LinkPreview] Unexpected Error: ${error.message}`);
-    return ApiResponse.error(res, "Failed to fetch link preview");
-  }
-};
-
-// src/routes/link-preview.ts
-var router3 = (0, import_express3.Router)();
-router3.get("/", getLinkPreview);
-var link_preview_default = router3;
-
-// src/routes/threads.ts
-var import_express4 = require("express");
-
-// src/controllers/thread.ts
+// src/core/messaging/controllers/thread.controller.ts
+init_db();
+init_logger();
 var getChannelThreadMetadata = async (req, res) => {
   try {
     const { messageId } = req.params;
@@ -1182,7 +1485,7 @@ var getChannelThreadMetadata = async (req, res) => {
         deleted: false
       },
       include: {
-        member: {
+        cohortMember: {
           include: {
             profile: true
           }
@@ -1194,11 +1497,11 @@ var getChannelThreadMetadata = async (req, res) => {
     });
     const participantsMap = /* @__PURE__ */ new Map();
     replies.forEach((reply) => {
-      if (!participantsMap.has(reply.member.profile.id)) {
-        participantsMap.set(reply.member.profile.id, {
-          id: reply.member.profile.id,
-          name: reply.member.profile.name,
-          imageUrl: reply.member.profile.imageUrl
+      if (!participantsMap.has(reply.cohortMember.profile.id)) {
+        participantsMap.set(reply.cohortMember.profile.id, {
+          id: reply.cohortMember.profile.id,
+          name: reply.cohortMember.profile.name,
+          imageUrl: reply.cohortMember.profile.imageUrl
         });
       }
     });
@@ -1210,7 +1513,7 @@ var getChannelThreadMetadata = async (req, res) => {
       lastReplyAt
     });
   } catch (error) {
-    console.error("[GET_CHANNEL_THREAD_METADATA]", error);
+    logger_default.error("[GET_CHANNEL_THREAD_METADATA]", error);
     return ApiResponse.error(res, "Internal server error");
   }
 };
@@ -1226,7 +1529,7 @@ var getDirectThreadMetadata = async (req, res) => {
         deleted: false
       },
       include: {
-        member: {
+        cohortMember: {
           include: {
             profile: true
           }
@@ -1238,11 +1541,11 @@ var getDirectThreadMetadata = async (req, res) => {
     });
     const participantsMap = /* @__PURE__ */ new Map();
     replies.forEach((reply) => {
-      if (!participantsMap.has(reply.member.profile.id)) {
-        participantsMap.set(reply.member.profile.id, {
-          id: reply.member.profile.id,
-          name: reply.member.profile.name,
-          imageUrl: reply.member.profile.imageUrl
+      if (!participantsMap.has(reply.cohortMember.profile.id)) {
+        participantsMap.set(reply.cohortMember.profile.id, {
+          id: reply.cohortMember.profile.id,
+          name: reply.cohortMember.profile.name,
+          imageUrl: reply.cohortMember.profile.imageUrl
         });
       }
     });
@@ -1254,289 +1557,18 @@ var getDirectThreadMetadata = async (req, res) => {
       lastReplyAt
     });
   } catch (error) {
-    console.error("[GET_DIRECT_THREAD_METADATA]", error);
+    logger_default.error("[GET_DIRECT_THREAD_METADATA]", error);
     return ApiResponse.error(res, "Internal server error");
   }
 };
 
-// src/routes/threads.ts
-var router4 = (0, import_express4.Router)();
-router4.get("/channel/:messageId", getChannelThreadMetadata);
-router4.get("/direct/:messageId", getDirectThreadMetadata);
-var threads_default = router4;
-
-// src/routes/notifications.ts
-var import_express5 = require("express");
-
-// src/services/profile.ts
-var getProfileByUserId = async (userId) => {
-  return await prisma.profile.findUnique({
-    where: { userId }
-  });
+// src/core/messaging/controllers/reaction.controller.ts
+init_db();
+init_logger();
+var getReactionService = () => {
+  const { ReactionService: RealReactionService } = (init_services3(), __toCommonJS(services_exports));
+  return RealReactionService;
 };
-
-// src/controllers/notification.ts
-var getNotifications = async (req, res) => {
-  try {
-    const userId = res.locals.userId;
-    if (!userId) return ApiResponse.error(res, "Unauthorized", 401);
-    if (!prisma.notification) {
-      logger_default.error(
-        "[ERROR] prisma.notification is UNDEFINED. Current models:",
-        Object.keys(prisma)
-      );
-      return ApiResponse.error(
-        res,
-        "Database model 'notification' not found in Prisma client",
-        500
-      );
-    }
-    const profile = await getProfileByUserId(userId);
-    if (!profile) return ApiResponse.error(res, "Profile not found", 404);
-    const notifications = await prisma.notification.findMany({
-      where: { receiverId: profile.id },
-      include: {
-        sender: {
-          select: { id: true, name: true, imageUrl: true }
-        }
-      },
-      orderBy: { createdAt: "desc" },
-      take: 50
-    });
-    return ApiResponse.success(res, notifications);
-  } catch (error) {
-    console.error("[GET_NOTIFICATIONS]", error);
-    return ApiResponse.error(res, "Internal server error");
-  }
-};
-var getUnreadCount = async (req, res) => {
-  try {
-    const userId = res.locals.userId;
-    if (!userId) return ApiResponse.error(res, "Unauthorized", 401);
-    const profile = await getProfileByUserId(userId);
-    if (!profile) return ApiResponse.error(res, "Profile not found", 404);
-    const count = await prisma.notification.count({
-      where: {
-        receiverId: profile.id,
-        isRead: false
-      }
-    });
-    return ApiResponse.success(res, { count });
-  } catch (error) {
-    console.error("[GET_UNREAD_COUNT]", error);
-    return ApiResponse.error(res, "Internal server error");
-  }
-};
-var markAsRead = async (req, res) => {
-  try {
-    const { notificationId } = req.params;
-    const userId = res.locals.userId;
-    if (!userId) return ApiResponse.error(res, "Unauthorized", 401);
-    const profile = await getProfileByUserId(userId);
-    if (!profile) return ApiResponse.error(res, "Profile not found", 404);
-    const notification = await prisma.notification.update({
-      where: {
-        id: notificationId,
-        receiverId: profile.id
-      },
-      data: { isRead: true }
-    });
-    const io2 = req.app.get("io");
-    io2.to(`user:${userId}`).emit("notification:read", notification);
-    return ApiResponse.success(
-      res,
-      notification,
-      "Notification marked as read"
-    );
-  } catch (error) {
-    console.error("[MARK_AS_READ]", error);
-    return ApiResponse.error(res, "Internal server error");
-  }
-};
-var markAllAsRead = async (req, res) => {
-  try {
-    const userId = res.locals.userId;
-    if (!userId) return ApiResponse.error(res, "Unauthorized", 401);
-    const profile = await getProfileByUserId(userId);
-    if (!profile) return ApiResponse.error(res, "Profile not found", 404);
-    await prisma.notification.updateMany({
-      where: {
-        receiverId: profile.id,
-        isRead: false
-      },
-      data: { isRead: true }
-    });
-    const io2 = req.app.get("io");
-    io2.to(`user:${userId}`).emit("notification:all-read");
-    return ApiResponse.success(
-      res,
-      { success: true },
-      "All notifications marked as read"
-    );
-  } catch (error) {
-    console.error("[MARK_ALL_AS_READ]", error);
-    return ApiResponse.error(res, "Internal server error");
-  }
-};
-var deleteNotification = async (req, res) => {
-  try {
-    const { notificationId } = req.params;
-    const userId = res.locals.userId;
-    if (!userId) return ApiResponse.error(res, "Unauthorized", 401);
-    const profile = await getProfileByUserId(userId);
-    if (!profile) return ApiResponse.error(res, "Profile not found", 404);
-    await prisma.notification.delete({
-      where: {
-        id: notificationId,
-        receiverId: profile.id
-      }
-    });
-    const io2 = req.app.get("io");
-    io2.to(`user:${userId}`).emit("notification:deleted", {
-      id: notificationId
-    });
-    return ApiResponse.success(res, { success: true }, "Notification deleted");
-  } catch (error) {
-    console.error("[DELETE_NOTIFICATION]", error);
-    return ApiResponse.error(res, "Internal server error");
-  }
-};
-var deleteAllNotifications = async (req, res) => {
-  try {
-    const userId = res.locals.userId;
-    if (!userId) return ApiResponse.error(res, "Unauthorized", 401);
-    const profile = await getProfileByUserId(userId);
-    if (!profile) return ApiResponse.error(res, "Profile not found", 404);
-    await prisma.notification.deleteMany({
-      where: { receiverId: profile.id }
-    });
-    const io2 = req.app.get("io");
-    io2.to(`user:${userId}`).emit("notification:all-deleted");
-    return ApiResponse.success(
-      res,
-      { success: true },
-      "All notifications deleted"
-    );
-  } catch (error) {
-    console.error("[DELETE_ALL_NOTIFICATIONS]", error);
-    return ApiResponse.error(res, "Internal server error");
-  }
-};
-
-// src/routes/notifications.ts
-var router5 = (0, import_express5.Router)();
-router5.use(authMiddleware);
-router5.get("/", getNotifications);
-router5.get("/unread-count", getUnreadCount);
-router5.patch("/:notificationId/read", markAsRead);
-router5.patch("/mark-all-read", markAllAsRead);
-router5.delete("/:notificationId", deleteNotification);
-router5.delete("/delete-all", deleteAllNotifications);
-var notifications_default = router5;
-
-// src/routes/reactions.ts
-var import_express6 = require("express");
-
-// src/services/reaction.ts
-var ReactionService = class {
-  /**
-   * Add a reaction to a message
-   */
-  static async addReaction(payload) {
-    const { userId, emoji, messageId, directMessageId } = payload;
-    const profile = await getProfileByUserId(userId);
-    if (!profile) throw new NotFoundError("Profile not found");
-    let authorProfileId = null;
-    let authorUserId = null;
-    if (messageId) {
-      const message = await prisma.message.findUnique({
-        where: { id: messageId },
-        include: { member: { include: { profile: true } } }
-      });
-      authorProfileId = message?.member.profile.id || null;
-      authorUserId = message?.member.profile.userId || null;
-    } else if (directMessageId) {
-      const directMessage = await prisma.directMessage.findUnique({
-        where: { id: directMessageId },
-        include: { member: { include: { profile: true } } }
-      });
-      authorProfileId = directMessage?.member.profile.id || null;
-      authorUserId = directMessage?.member.profile.userId || null;
-    }
-    const existingReaction = await prisma.reaction.findFirst({
-      where: {
-        profileId: profile.id,
-        messageId,
-        directMessageId
-      }
-    });
-    if (existingReaction) {
-      if (existingReaction.emoji === emoji) {
-        await prisma.reaction.delete({
-          where: { id: existingReaction.id }
-        });
-        events.emit(REACTION_EVENTS.REMOVED, { reaction: existingReaction });
-        return null;
-      }
-      const oldReaction = { ...existingReaction };
-      const updatedReaction = await prisma.reaction.update({
-        where: { id: existingReaction.id },
-        data: { emoji },
-        include: {
-          profile: {
-            select: { id: true, name: true, imageUrl: true }
-          }
-        }
-      });
-      events.emit(REACTION_EVENTS.REMOVED, { reaction: oldReaction });
-      events.emit(REACTION_EVENTS.ADDED, {
-        reaction: updatedReaction,
-        authorProfileId,
-        authorUserId,
-        senderProfileId: profile.id
-      });
-      return updatedReaction;
-    }
-    const reaction = await prisma.reaction.create({
-      data: {
-        emoji,
-        profileId: profile.id,
-        messageId,
-        directMessageId
-      },
-      include: {
-        profile: {
-          select: { id: true, name: true, imageUrl: true }
-        }
-      }
-    });
-    events.emit(REACTION_EVENTS.ADDED, {
-      reaction,
-      authorProfileId,
-      authorUserId,
-      senderProfileId: profile.id
-    });
-    return reaction;
-  }
-  /**
-   * Remove a reaction
-   */
-  static async removeReaction(payload) {
-    const { userId, reactionId } = payload;
-    const profile = await getProfileByUserId(userId);
-    if (!profile) throw new NotFoundError("Profile not found");
-    const reaction = await prisma.reaction.delete({
-      where: {
-        id: reactionId,
-        profileId: profile.id
-      }
-    });
-    events.emit(REACTION_EVENTS.REMOVED, { reaction });
-    return reaction;
-  }
-};
-
-// src/controllers/reaction.ts
 var addReaction = async (req, res) => {
   try {
     const userId = res.locals.userId;
@@ -1545,7 +1577,8 @@ var addReaction = async (req, res) => {
     if (!emoji || !messageId && !directMessageId) {
       return ApiResponse.error(res, "Missing required fields", 400);
     }
-    const reaction = await ReactionService.addReaction({
+    const reactionService = getReactionService();
+    const reaction = await reactionService.addReaction({
       userId,
       emoji,
       messageId,
@@ -1567,7 +1600,8 @@ var removeReaction = async (req, res) => {
     const { reactionId } = req.params;
     const userId = res.locals.userId;
     if (!userId) return ApiResponse.error(res, "Unauthorized", 401);
-    await ReactionService.removeReaction({
+    const reactionService = getReactionService();
+    await reactionService.removeReaction({
       userId,
       reactionId
     });
@@ -1612,103 +1646,972 @@ var getMessageReactions = async (req, res) => {
   }
 };
 
-// src/routes/reactions.ts
-var router6 = (0, import_express6.Router)();
-router6.get("/message/:messageId", getMessageReactions);
-router6.use(authMiddleware);
-router6.post("/", addReaction);
-router6.delete("/:reactionId", removeReaction);
-router6.get("/message/:messageId", getMessageReactions);
-var reactions_default = router6;
+// src/core/messaging/controllers/poll.controller.ts
+init_logger();
 
-// src/routes/members.ts
-var import_express7 = require("express");
-
-// src/controllers/member.ts
-var getServerMembers = async (req, res) => {
-  try {
-    const { serverId } = req.params;
-    const userId = res.locals.userId;
-    if (!serverId) {
-      return ApiResponse.error(res, "Server ID missing", 400);
+// src/core/messaging/poll.service.ts
+init_db();
+init_services2();
+init_errors();
+var PollService = class {
+  /**
+   * Create a new poll attached to a message
+   */
+  static async createPoll(payload) {
+    const { question, options, expiresAt, messageId, directMessageId } = payload;
+    if (!options || options.length < 2) {
+      throw new BadRequestError("A poll must have at least 2 options");
     }
-    const currentMember = await prisma.member.findFirst({
-      where: {
-        serverId,
-        profile: {
-          userId
+    return await prisma.poll.create({
+      data: {
+        question,
+        expiresAt,
+        messageId,
+        directMessageId,
+        options: {
+          create: options.map((text) => ({ text }))
+        }
+      },
+      include: {
+        options: {
+          include: {
+            votes: true,
+            _count: {
+              select: { votes: true }
+            }
+          }
         }
       }
     });
-    if (!currentMember) {
-      return ApiResponse.error(res, "Forbidden", 403);
+  }
+  /**
+   * Cast a vote in a poll
+   */
+  static async castVote(payload) {
+    const { pollId, userId, optionId } = payload;
+    const profile = await getProfileByUserId(userId);
+    if (!profile) throw new NotFoundError("Profile not found");
+    const poll = await prisma.poll.findUnique({
+      where: { id: pollId }
+    });
+    if (!poll) throw new NotFoundError("Poll not found");
+    if (poll.expiresAt && poll.expiresAt < /* @__PURE__ */ new Date()) {
+      throw new BadRequestError("This poll has expired");
     }
-    const members = await prisma.member.findMany({
+    const existingVote = await prisma.pollVote.findUnique({
       where: {
-        serverId
-      },
-      include: {
-        profile: true
-      },
-      orderBy: {
-        role: "asc"
+        profileId_pollId: {
+          profileId: profile.id,
+          pollId
+        }
       }
     });
-    return ApiResponse.success(res, members);
-  } catch (error) {
-    console.error("[GET_SERVER_MEMBERS]", error);
-    return ApiResponse.error(res, "Internal server error");
+    if (existingVote) {
+      if (existingVote.optionId === optionId) {
+        return await prisma.pollVote.delete({
+          where: { id: existingVote.id }
+        });
+      }
+      return await prisma.pollVote.update({
+        where: { id: existingVote.id },
+        data: { optionId }
+      });
+    }
+    return await prisma.pollVote.create({
+      data: {
+        profileId: profile.id,
+        pollId,
+        optionId
+      }
+    });
+  }
+  /**
+   * Get poll results with vote counts
+   */
+  static async getPollResults(pollId) {
+    return await prisma.poll.findUnique({
+      where: { id: pollId },
+      include: {
+        options: {
+          include: {
+            votes: true,
+            _count: {
+              select: { votes: true }
+            }
+          }
+        }
+      }
+    });
   }
 };
 
-// src/routes/members.ts
-var router7 = (0, import_express7.Router)();
-router7.get("/server/:serverId", getServerMembers);
-var members_default = router7;
+// src/core/messaging/controllers/poll.controller.ts
+init_events();
+var castPollVote = async (req, res) => {
+  try {
+    const { pollId } = req.params;
+    const { optionId } = req.body;
+    const userId = res.locals.userId;
+    if (!optionId) {
+      return ApiResponse.error(res, "Option ID missing", 400);
+    }
+    await PollService.castVote({
+      pollId,
+      userId,
+      optionId
+    });
+    const updatedPoll = await PollService.getPollResults(pollId);
+    events.emit(POLL_EVENTS.VOTED, { poll: updatedPoll });
+    return ApiResponse.success(res, updatedPoll, "Vote cast successfully");
+  } catch (error) {
+    logger_default.error("[CAST_POLL_VOTE]", error);
+    return ApiResponse.error(res, error.message || "Internal server error");
+  }
+};
 
-// src/routes/channels.ts
-var import_express8 = require("express");
+// src/core/messaging/controllers/link-preview.controller.ts
+var import_axios = __toESM(require("axios"), 1);
+init_logger();
+var getLinkPreview = async (req, res) => {
+  const { url } = req.query;
+  try {
+    if (!url || typeof url !== "string") {
+      return ApiResponse.error(res, "URL is required", 400);
+    }
+    const apiKey = process.env.OPENGRAPH_IO_KEY;
+    if (!apiKey) {
+      logger_default.error("[LinkPreview] OPENGRAPH_IO_KEY is missing");
+      return ApiResponse.error(
+        res,
+        "Link preview service is not configured.",
+        500
+      );
+    }
+    const opengraphUrl = `https://opengraph.io/api/1.1/site/${encodeURIComponent(url)}?app_id=${apiKey}`;
+    const response = await import_axios.default.get(opengraphUrl, { timeout: 1e4 });
+    const data = response.data;
+    if (data.error) {
+      return ApiResponse.error(res, data.error.message, 400);
+    }
+    const hybrid = data.hybridGraph || {};
+    const openGraph = data.openGraph || {};
+    const htmlInferred = data.htmlInferred || {};
+    let fallbackTitle = url;
+    try {
+      fallbackTitle = new URL(url).hostname;
+    } catch (e) {
+    }
+    return ApiResponse.success(
+      res,
+      {
+        title: hybrid.title || openGraph.title || htmlInferred.title || fallbackTitle,
+        description: hybrid.description || openGraph.description || htmlInferred.description || "",
+        image: hybrid.image || openGraph.image || htmlInferred.image || null,
+        favIcon: data.favicon || null,
+        url: data.url || url
+      },
+      "Link preview fetched"
+    );
+  } catch (error) {
+    const status = error.response?.status || 500;
+    const errorMessage = error.response?.data?.error?.message || error.message || "Failed to fetch link preview";
+    logger_default.error(
+      `[LinkPreview] Error fetching metadata for ${url}: ${errorMessage} (Status: ${status})`
+    );
+    return ApiResponse.error(res, errorMessage, status);
+  }
+};
 
-// src/controllers/channel.ts
+// src/shared/middlewares/validationMiddleware.ts
+init_logger();
+var validator = (schema) => (req, res, next) => {
+  try {
+    schema.parse({
+      body: req.body,
+      query: req.query,
+      params: req.params
+    });
+    next();
+  } catch (err) {
+    logger_default.error("[ValidationMiddleware] Validation error:", err);
+    return res.status(400).send(err.errors);
+  }
+};
+var validationMiddleware_default = validator;
+
+// src/shared/schemas/message.schema.ts
+var import_zod = require("zod");
+var createChannelMessageSchema = import_zod.z.object({
+  body: import_zod.z.object({
+    content: import_zod.z.string().min(1).max(5e3),
+    fileUrl: import_zod.z.string().url().optional().nullable(),
+    isEncrypted: import_zod.z.boolean().optional()
+  }),
+  query: import_zod.z.object({
+    cohortId: import_zod.z.string().min(1),
+    channelId: import_zod.z.string().min(1)
+  })
+});
+var createDirectMessageSchema = import_zod.z.object({
+  body: import_zod.z.object({
+    content: import_zod.z.string().min(1).max(5e3),
+    fileUrl: import_zod.z.string().url().optional().nullable(),
+    isEncrypted: import_zod.z.boolean().optional()
+  }),
+  query: import_zod.z.object({
+    conversationId: import_zod.z.string().min(1)
+  })
+});
+var updateMessageSchema = import_zod.z.object({
+  params: import_zod.z.object({
+    messageId: import_zod.z.string().min(1)
+  }),
+  body: import_zod.z.object({
+    content: import_zod.z.string().min(1).max(5e3)
+  }),
+  query: import_zod.z.object({
+    cohortId: import_zod.z.string().optional(),
+    channelId: import_zod.z.string().optional(),
+    conversationId: import_zod.z.string().optional()
+  })
+});
+var deleteMessageSchema = import_zod.z.object({
+  params: import_zod.z.object({
+    messageId: import_zod.z.string().min(1)
+  }),
+  query: import_zod.z.object({
+    cohortId: import_zod.z.string().optional(),
+    channelId: import_zod.z.string().optional(),
+    conversationId: import_zod.z.string().optional()
+  })
+});
+var conversationSchema = import_zod.z.object({
+  query: import_zod.z.object({
+    receiverId: import_zod.z.string().min(1)
+  })
+});
+var sendMessageSchema = import_zod.z.object({
+  body: import_zod.z.object({
+    message: import_zod.z.string().min(1)
+  }),
+  query: import_zod.z.object({
+    receiverId: import_zod.z.string().min(1)
+  })
+});
+
+// src/core/messaging/routes.ts
+var router = (0, import_express.Router)();
+var messageRouter = (0, import_express.Router)();
+messageRouter.post(
+  "/channel",
+  validationMiddleware_default(createChannelMessageSchema),
+  createChannelMessage
+);
+messageRouter.post(
+  "/direct",
+  validationMiddleware_default(createDirectMessageSchema),
+  createDirectMessage
+);
+messageRouter.patch(
+  "/:messageId",
+  validationMiddleware_default(updateMessageSchema),
+  updateMessage
+);
+messageRouter.delete(
+  "/:messageId",
+  validationMiddleware_default(deleteMessageSchema),
+  deleteMessage
+);
+messageRouter.post("/:messageId/pin", pinMessage);
+messageRouter.delete("/:messageId/pin", unpinMessage);
+messageRouter.get("/conversation", getConversation);
+messageRouter.get("/", getMessages);
+var conversationRouter = (0, import_express.Router)();
+conversationRouter.get("/", getConversations);
+var threadRouter = (0, import_express.Router)();
+threadRouter.get("/channel/:messageId", getChannelThreadMetadata);
+threadRouter.get("/direct/:messageId", getDirectThreadMetadata);
+var reactionRouter = (0, import_express.Router)();
+reactionRouter.get("/message/:messageId", getMessageReactions);
+reactionRouter.post("/", addReaction);
+reactionRouter.delete("/:reactionId", removeReaction);
+var pollRouter = (0, import_express.Router)();
+pollRouter.post("/:pollId/vote", castPollVote);
+var linkPreviewRouter = (0, import_express.Router)();
+linkPreviewRouter.get("/", getLinkPreview);
+router.get("/direct-messages", getDirectMessages);
+router.use("/messages", messageRouter);
+router.use("/conversations", conversationRouter);
+router.use("/threads", threadRouter);
+router.use("/reactions", reactionRouter);
+router.use("/polls", pollRouter);
+router.use("/link-preview", linkPreviewRouter);
+var routes_default = router;
+
+// src/core/cohorts/routes.ts
+var import_express2 = require("express");
+
+// src/core/cohorts/controllers.ts
+init_db();
+init_logger();
+var getChannel = async (req, res) => {
+  try {
+    const { channelId } = req.params;
+    const channel = await prisma.channel.findUnique({
+      where: { id: channelId }
+    });
+    return ApiResponse.success(res, channel);
+  } catch (error) {
+    logger_default.error("[GET_CHANNEL]", error);
+    return ApiResponse.error(res, "Internal server error");
+  }
+};
 var getServerChannels = async (req, res) => {
   try {
-    const { serverId } = req.params;
+    const { cohortId } = req.params;
     const userId = res.locals.userId;
-    if (!serverId) {
-      return ApiResponse.error(res, "Server ID missing", 400);
+    if (!cohortId) {
+      return ApiResponse.error(res, "Cohort ID missing", 400);
     }
-    const currentMember = await prisma.member.findFirst({
+    const currentMember = await prisma.cohortMember.findFirst({
       where: {
-        serverId,
-        profile: {
-          userId
-        }
+        cohortId,
+        profile: { userId }
       }
     });
     if (!currentMember) {
       return ApiResponse.error(res, "Forbidden", 403);
     }
     const channels = await prisma.channel.findMany({
-      where: {
-        serverId
-      },
-      orderBy: {
-        createdAt: "asc"
-      }
+      where: { cohortId },
+      orderBy: { createdAt: "asc" }
     });
     return ApiResponse.success(res, channels);
   } catch (error) {
-    console.error("[GET_SERVER_CHANNELS]", error);
+    logger_default.error("[GET_SERVER_CHANNELS]", error);
+    return ApiResponse.error(res, "Internal server error");
+  }
+};
+var getMember = async (req, res) => {
+  try {
+    const { cohortMemberId } = req.params;
+    const cohortMember = await prisma.cohortMember.findUnique({
+      where: { id: cohortMemberId },
+      include: { profile: true }
+    });
+    return ApiResponse.success(res, cohortMember);
+  } catch (error) {
+    logger_default.error("[GET_MEMBER]", error);
+    return ApiResponse.error(res, "Internal server error");
+  }
+};
+var getServerMembers = async (req, res) => {
+  try {
+    const { cohortId } = req.params;
+    const userId = res.locals.userId;
+    if (!cohortId) {
+      return ApiResponse.error(res, "Cohort ID missing", 400);
+    }
+    const currentMember = await prisma.cohortMember.findFirst({
+      where: {
+        cohortId,
+        profile: { userId }
+      }
+    });
+    if (!currentMember) {
+      return ApiResponse.error(res, "Forbidden", 403);
+    }
+    const members = await prisma.cohortMember.findMany({
+      where: { cohortId },
+      include: { profile: true },
+      orderBy: { role: "asc" }
+    });
+    return ApiResponse.success(res, members);
+  } catch (error) {
+    logger_default.error("[GET_SERVER_MEMBERS]", error);
+    return ApiResponse.error(res, "Internal server error");
+  }
+};
+var createChannel = async (req, res) => {
+  try {
+    const { cohortId } = req.query;
+    const { name, type } = req.body;
+    const userId = res.locals.userId;
+    if (!cohortId || typeof cohortId !== "string") {
+      return ApiResponse.error(res, "Cohort ID missing", 400);
+    }
+    if (!name) {
+      return ApiResponse.error(res, "Channel name is required", 400);
+    }
+    const currentMember = await prisma.cohortMember.findFirst({
+      where: {
+        cohortId,
+        profile: { userId },
+        role: { in: ["ADMIN", "MODERATOR"] }
+      }
+    });
+    if (!currentMember) {
+      return ApiResponse.error(res, "Forbidden", 403);
+    }
+    const server2 = await prisma.cohort.update({
+      where: { id: cohortId },
+      data: {
+        channels: {
+          create: {
+            name,
+            type: type || "TEXT",
+            profileId: currentMember.profileId
+          }
+        }
+      },
+      include: {
+        channels: { orderBy: { createdAt: "asc" } },
+        cohortMembers: { include: { profile: true }, orderBy: { role: "asc" } }
+      }
+    });
+    return ApiResponse.success(res, server2);
+  } catch (error) {
+    logger_default.error("[CREATE_CHANNEL]", error);
+    return ApiResponse.error(res, "Internal server error");
+  }
+};
+var updateChannel = async (req, res) => {
+  try {
+    const { channelId } = req.params;
+    const { cohortId } = req.query;
+    const { name, type } = req.body;
+    const userId = res.locals.userId;
+    if (!cohortId || typeof cohortId !== "string") {
+      return ApiResponse.error(res, "Cohort ID missing", 400);
+    }
+    if (!channelId) {
+      return ApiResponse.error(res, "Channel ID missing", 400);
+    }
+    const currentMember = await prisma.cohortMember.findFirst({
+      where: {
+        cohortId,
+        profile: { userId },
+        role: { in: ["ADMIN", "MODERATOR"] }
+      }
+    });
+    if (!currentMember) {
+      return ApiResponse.error(res, "Forbidden", 403);
+    }
+    const channel = await prisma.channel.findFirst({
+      where: { id: channelId, cohortId }
+    });
+    if (!channel) {
+      return ApiResponse.error(res, "Channel not found", 404);
+    }
+    if (channel.name === "general") {
+      return ApiResponse.error(res, "Cannot edit general channel", 400);
+    }
+    const server2 = await prisma.cohort.update({
+      where: { id: cohortId },
+      data: {
+        channels: {
+          update: {
+            where: { id: channelId },
+            data: { name, type }
+          }
+        }
+      },
+      include: {
+        channels: { orderBy: { createdAt: "asc" } },
+        cohortMembers: { include: { profile: true }, orderBy: { role: "asc" } }
+      }
+    });
+    return ApiResponse.success(res, server2);
+  } catch (error) {
+    logger_default.error("[UPDATE_CHANNEL]", error);
+    return ApiResponse.error(res, "Internal server error");
+  }
+};
+var deleteChannel = async (req, res) => {
+  try {
+    const { channelId } = req.params;
+    const { cohortId } = req.query;
+    const userId = res.locals.userId;
+    if (!cohortId || typeof cohortId !== "string") {
+      return ApiResponse.error(res, "Cohort ID missing", 400);
+    }
+    if (!channelId) {
+      return ApiResponse.error(res, "Channel ID missing", 400);
+    }
+    const currentMember = await prisma.cohortMember.findFirst({
+      where: {
+        cohortId,
+        profile: { userId },
+        role: { in: ["ADMIN", "MODERATOR"] }
+      }
+    });
+    if (!currentMember) {
+      return ApiResponse.error(res, "Forbidden", 403);
+    }
+    const channel = await prisma.channel.findFirst({
+      where: { id: channelId, cohortId }
+    });
+    if (!channel) {
+      return ApiResponse.error(res, "Channel not found", 404);
+    }
+    if (channel.name === "general") {
+      return ApiResponse.error(res, "Cannot delete general channel", 400);
+    }
+    const server2 = await prisma.cohort.update({
+      where: { id: cohortId },
+      data: {
+        channels: {
+          delete: { id: channelId }
+        }
+      },
+      include: {
+        channels: { orderBy: { createdAt: "asc" } },
+        cohortMembers: { include: { profile: true }, orderBy: { role: "asc" } }
+      }
+    });
+    return ApiResponse.success(res, server2);
+  } catch (error) {
+    logger_default.error("[DELETE_CHANNEL]", error);
+    return ApiResponse.error(res, "Internal server error");
+  }
+};
+var updateMemberRole = async (req, res) => {
+  try {
+    const { cohortMemberId } = req.params;
+    const { cohortId } = req.query;
+    const { role } = req.body;
+    const userId = res.locals.userId;
+    if (!cohortId || typeof cohortId !== "string") {
+      return ApiResponse.error(res, "Cohort ID missing", 400);
+    }
+    if (!cohortMemberId) {
+      return ApiResponse.error(res, "CohortMember ID missing", 400);
+    }
+    const currentMember = await prisma.cohortMember.findFirst({
+      where: {
+        cohortId,
+        profile: { userId },
+        role: "ADMIN"
+      }
+    });
+    if (!currentMember) {
+      return ApiResponse.error(res, "Forbidden", 403);
+    }
+    const server2 = await prisma.cohort.update({
+      where: { id: cohortId },
+      data: {
+        cohortMembers: {
+          update: {
+            where: { id: cohortMemberId },
+            data: { role }
+          }
+        }
+      },
+      include: {
+        channels: { orderBy: { createdAt: "asc" } },
+        cohortMembers: { include: { profile: true }, orderBy: { role: "asc" } }
+      }
+    });
+    return ApiResponse.success(res, server2);
+  } catch (error) {
+    logger_default.error("[UPDATE_MEMBER_ROLE]", error);
+    return ApiResponse.error(res, "Internal server error");
+  }
+};
+var kickMember = async (req, res) => {
+  try {
+    const { cohortMemberId } = req.params;
+    const { cohortId } = req.query;
+    const userId = res.locals.userId;
+    if (!cohortId || typeof cohortId !== "string") {
+      return ApiResponse.error(res, "Cohort ID missing", 400);
+    }
+    if (!cohortMemberId) {
+      return ApiResponse.error(res, "CohortMember ID missing", 400);
+    }
+    const currentMember = await prisma.cohortMember.findFirst({
+      where: {
+        cohortId,
+        profile: { userId },
+        role: "ADMIN"
+      }
+    });
+    if (!currentMember) {
+      return ApiResponse.error(res, "Forbidden", 403);
+    }
+    const server2 = await prisma.cohort.update({
+      where: { id: cohortId },
+      data: {
+        cohortMembers: {
+          delete: { id: cohortMemberId }
+        }
+      },
+      include: {
+        channels: { orderBy: { createdAt: "asc" } },
+        cohortMembers: { include: { profile: true }, orderBy: { role: "asc" } }
+      }
+    });
+    return ApiResponse.success(res, server2);
+  } catch (error) {
+    logger_default.error("[KICK_MEMBER]", error);
     return ApiResponse.error(res, "Internal server error");
   }
 };
 
-// src/routes/channels.ts
-var router8 = (0, import_express8.Router)();
-router8.get("/server/:serverId", getServerChannels);
-var channels_default = router8;
+// src/shared/schemas/cohort.schema.ts
+var import_zod2 = require("zod");
+var createChannelSchema = import_zod2.z.object({
+  body: import_zod2.z.object({
+    name: import_zod2.z.string().min(1, "Channel name is required").max(50, "Channel name is too long").regex(
+      /^[a-z0-9-]+$/,
+      "Channel name must be lowercase alphanumeric with hyphens"
+    ),
+    type: import_zod2.z.enum(["TEXT", "AUDIO", "VIDEO"]).default("TEXT"),
+    cohortId: import_zod2.z.string().min(1, "Cohort ID is required")
+  })
+});
+var updateChannelSchema = import_zod2.z.object({
+  params: import_zod2.z.object({
+    channelId: import_zod2.z.string().min(1, "Channel ID is required")
+  }),
+  body: import_zod2.z.object({
+    name: import_zod2.z.string().min(1, "Channel name is required").max(50, "Channel name is too long").regex(
+      /^[a-z0-9-]+$/,
+      "Channel name must be lowercase alphanumeric with hyphens"
+    ).optional(),
+    type: import_zod2.z.enum(["TEXT", "AUDIO", "VIDEO"]).optional()
+  }),
+  query: import_zod2.z.object({
+    cohortId: import_zod2.z.string().min(1, "Cohort ID is required")
+  })
+});
+var deleteChannelSchema = import_zod2.z.object({
+  params: import_zod2.z.object({
+    channelId: import_zod2.z.string().min(1, "Channel ID is required")
+  }),
+  query: import_zod2.z.object({
+    cohortId: import_zod2.z.string().min(1, "Cohort ID is required")
+  })
+});
+var getChannelSchema = import_zod2.z.object({
+  params: import_zod2.z.object({
+    channelId: import_zod2.z.string().min(1, "Channel ID is required")
+  })
+});
+var getCohortChannelsSchema = import_zod2.z.object({
+  params: import_zod2.z.object({
+    cohortId: import_zod2.z.string().min(1, "Cohort ID is required")
+  })
+});
+var updateMemberRoleSchema = import_zod2.z.object({
+  params: import_zod2.z.object({
+    cohortMemberId: import_zod2.z.string().min(1, "Cohort member ID is required")
+  }),
+  body: import_zod2.z.object({
+    role: import_zod2.z.enum(["ADMIN", "MODERATOR", "GUEST"])
+  }),
+  query: import_zod2.z.object({
+    cohortId: import_zod2.z.string().min(1, "Cohort ID is required")
+  })
+});
+var kickMemberSchema = import_zod2.z.object({
+  params: import_zod2.z.object({
+    cohortMemberId: import_zod2.z.string().min(1, "Cohort member ID is required")
+  }),
+  query: import_zod2.z.object({
+    cohortId: import_zod2.z.string().min(1, "Cohort ID is required")
+  })
+});
+var getCohortMembersSchema = import_zod2.z.object({
+  params: import_zod2.z.object({
+    cohortId: import_zod2.z.string().min(1, "Cohort ID is required")
+  })
+});
+var getMemberSchema = import_zod2.z.object({
+  params: import_zod2.z.object({
+    cohortMemberId: import_zod2.z.string().min(1, "Cohort member ID is required")
+  })
+});
+
+// src/core/cohorts/routes.ts
+var router2 = (0, import_express2.Router)();
+var channelRouter = (0, import_express2.Router)();
+channelRouter.get(
+  "/cohort/:cohortId",
+  validationMiddleware_default(getCohortChannelsSchema),
+  getServerChannels
+);
+channelRouter.get(
+  "/:channelId",
+  validationMiddleware_default(getChannelSchema),
+  getChannel
+);
+channelRouter.post(
+  "/",
+  validationMiddleware_default(createChannelSchema),
+  createChannel
+);
+channelRouter.patch(
+  "/:channelId",
+  validationMiddleware_default(updateChannelSchema),
+  updateChannel
+);
+channelRouter.delete(
+  "/:channelId",
+  validationMiddleware_default(deleteChannelSchema),
+  deleteChannel
+);
+var memberRouter = (0, import_express2.Router)();
+memberRouter.get(
+  "/cohort/:cohortId",
+  validationMiddleware_default(getCohortMembersSchema),
+  getServerMembers
+);
+memberRouter.get(
+  "/:cohortMemberId",
+  validationMiddleware_default(getMemberSchema),
+  getMember
+);
+memberRouter.patch(
+  "/:cohortMemberId",
+  validationMiddleware_default(updateMemberRoleSchema),
+  updateMemberRole
+);
+memberRouter.delete(
+  "/:cohortMemberId",
+  validationMiddleware_default(kickMemberSchema),
+  kickMember
+);
+router2.use("/channels", channelRouter);
+router2.use("/cohort-members", memberRouter);
+var routes_default2 = router2;
+
+// src/core/notifications/routes.ts
+var import_express3 = require("express");
+
+// src/core/notifications/controllers.ts
+init_db();
+init_logger();
+var getNotifications = async (req, res) => {
+  try {
+    const userId = res.locals.userId;
+    const profile = await prisma.profile.findFirst({ where: { userId } });
+    if (!profile) {
+      return ApiResponse.error(res, "Profile not found", 404);
+    }
+    const notifications = await prisma.notification.findMany({
+      where: { receiverId: profile.id },
+      include: {
+        sender: {
+          select: { id: true, name: true, imageUrl: true }
+        }
+      },
+      orderBy: { createdAt: "desc" },
+      take: 50
+    });
+    return ApiResponse.success(res, notifications);
+  } catch (error) {
+    logger_default.error("[GET_NOTIFICATIONS]", error);
+    return ApiResponse.error(res, "Internal server error");
+  }
+};
+var getUnreadCount = async (req, res) => {
+  try {
+    const userId = res.locals.userId;
+    const profile = await prisma.profile.findFirst({ where: { userId } });
+    if (!profile) {
+      return ApiResponse.error(res, "Profile not found", 404);
+    }
+    const count = await prisma.notification.count({
+      where: {
+        receiverId: profile.id,
+        isRead: false
+      }
+    });
+    return ApiResponse.success(res, { count });
+  } catch (error) {
+    logger_default.error("[GET_UNREAD_COUNT]", error);
+    return ApiResponse.error(res, "Internal server error");
+  }
+};
+var markAsRead = async (req, res) => {
+  try {
+    const { notificationId } = req.params;
+    const userId = res.locals.userId;
+    const profile = await prisma.profile.findFirst({ where: { userId } });
+    if (!profile) return ApiResponse.error(res, "Profile not found", 404);
+    const notification = await prisma.notification.update({
+      where: {
+        id: notificationId,
+        receiverId: profile.id
+      },
+      data: { isRead: true }
+    });
+    return ApiResponse.success(
+      res,
+      notification,
+      "Notification marked as read"
+    );
+  } catch (error) {
+    logger_default.error("[MARK_AS_READ]", error);
+    return ApiResponse.error(res, "Internal server error");
+  }
+};
+var markAllAsRead = async (req, res) => {
+  try {
+    const userId = res.locals.userId;
+    const profile = await prisma.profile.findFirst({ where: { userId } });
+    if (!profile) return ApiResponse.error(res, "Profile not found", 404);
+    await prisma.notification.updateMany({
+      where: {
+        receiverId: profile.id,
+        isRead: false
+      },
+      data: { isRead: true }
+    });
+    return ApiResponse.success(
+      res,
+      { success: true },
+      "All notifications marked as read"
+    );
+  } catch (error) {
+    logger_default.error("[MARK_ALL_AS_READ]", error);
+    return ApiResponse.error(res, "Internal server error");
+  }
+};
+var deleteNotification = async (req, res) => {
+  try {
+    const { notificationId } = req.params;
+    const userId = res.locals.userId;
+    const profile = await prisma.profile.findFirst({ where: { userId } });
+    if (!profile) return ApiResponse.error(res, "Profile not found", 404);
+    await prisma.notification.delete({
+      where: {
+        id: notificationId,
+        receiverId: profile.id
+      }
+    });
+    return ApiResponse.success(res, { success: true }, "Notification deleted");
+  } catch (error) {
+    logger_default.error("[DELETE_NOTIFICATION]", error);
+    return ApiResponse.error(res, "Internal server error");
+  }
+};
+var deleteAllNotifications = async (req, res) => {
+  try {
+    const userId = res.locals.userId;
+    const profile = await prisma.profile.findFirst({ where: { userId } });
+    if (!profile) return ApiResponse.error(res, "Profile not found", 404);
+    await prisma.notification.deleteMany({
+      where: { receiverId: profile.id }
+    });
+    return ApiResponse.success(
+      res,
+      { success: true },
+      "All notifications deleted"
+    );
+  } catch (error) {
+    logger_default.error("[DELETE_ALL_NOTIFICATIONS]", error);
+    return ApiResponse.error(res, "Internal server error");
+  }
+};
+
+// src/core/notifications/routes.ts
+var router3 = (0, import_express3.Router)();
+router3.get("/notifications", getNotifications);
+router3.get("/notifications/unread-count", getUnreadCount);
+router3.patch("/notifications/:notificationId/read", markAsRead);
+router3.patch("/notifications/mark-all-read", markAllAsRead);
+router3.delete("/notifications/:notificationId", deleteNotification);
+router3.delete("/notifications/delete-all", deleteAllNotifications);
+var routes_default3 = router3;
+
+// src/core/users/routes.ts
+var import_express4 = require("express");
+
+// src/core/users/controllers.ts
+init_db();
+init_logger();
+init_services2();
+var getCurrentUser = async (req, res) => {
+  try {
+    const userId = res.locals.userId;
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      include: { profile: true }
+    });
+    return ApiResponse.success(res, user);
+  } catch (error) {
+    logger_default.error("[GET_CURRENT_USER]", error);
+    return ApiResponse.error(res, "Internal server error");
+  }
+};
+var updateProfile2 = async (req, res) => {
+  try {
+    const userId = res.locals.userId;
+    const {
+      name,
+      imageUrl,
+      publicKey,
+      encryptedPrivateKey,
+      privateKeyIv,
+      privateKeySalt
+    } = req.body;
+    const updatedData = await updateProfile(userId, {
+      name,
+      imageUrl,
+      publicKey,
+      encryptedPrivateKey,
+      privateKeyIv,
+      privateKeySalt
+    });
+    return ApiResponse.success(res, updatedData);
+  } catch (error) {
+    logger_default.error("[UPDATE_PROFILE]", error);
+    return ApiResponse.error(res, "Internal server error");
+  }
+};
+
+// src/shared/schemas/profile.schema.ts
+var import_zod3 = require("zod");
+var updateProfileSchema = import_zod3.z.object({
+  body: import_zod3.z.object({
+    name: import_zod3.z.string().min(1, "Name cannot be empty").max(100, "Name is too long").optional(),
+    imageUrl: import_zod3.z.url("Invalid image URL").optional(),
+    // E2EE fields - must be valid base64 strings if provided
+    publicKey: import_zod3.z.string().min(1, "Public key cannot be empty").optional(),
+    encryptedPrivateKey: import_zod3.z.string().min(1, "Encrypted private key cannot be empty").optional(),
+    privateKeyIv: import_zod3.z.string().min(1, "Private key IV cannot be empty").optional(),
+    privateKeySalt: import_zod3.z.string().min(1, "Private key salt cannot be empty").optional(),
+    bio: import_zod3.z.string().max(500, "Bio is too long").optional()
+  }).refine(
+    (data) => {
+      const e2eeFields = [
+        data.encryptedPrivateKey,
+        data.privateKeyIv,
+        data.privateKeySalt
+      ];
+      const providedCount = e2eeFields.filter(Boolean).length;
+      return providedCount === 0 || providedCount === 3;
+    },
+    {
+      message: "All E2EE fields (encryptedPrivateKey, privateKeyIv, privateKeySalt) must be provided together"
+    }
+  )
+});
+
+// src/core/users/routes.ts
+var router4 = (0, import_express4.Router)();
+router4.get("/users/me", getCurrentUser);
+router4.patch(
+  "/profile",
+  validationMiddleware_default(updateProfileSchema),
+  updateProfile2
+);
+var routes_default4 = router4;
 
 // src/config/routes.ts
+init_logger();
 function setupRoutes(app2) {
   app2.get("/", (req, res) => {
     res.json({
@@ -1735,20 +2638,28 @@ function setupRoutes(app2) {
       uptime: process.uptime()
     });
   });
-  app2.use(authMiddleware);
-  app2.use(import_express9.default.json());
-  app2.use("/api/messages", messages_default);
-  app2.use("/api/conversations", conversations_default);
-  app2.use("/api/link-preview", link_preview_default);
-  app2.use("/api/threads", threads_default);
-  app2.use("/api/notifications", notifications_default);
-  app2.use("/api/reactions", reactions_default);
-  app2.use("/api/members", members_default);
-  app2.use("/api/channels", channels_default);
+  app2.use((req, res, next) => {
+    if (req.path.includes("/link-preview")) {
+      return next();
+    }
+    return authMiddleware(req, res, next);
+  });
+  app2.use(import_express5.default.json());
+  const v1Router = import_express5.default.Router();
+  v1Router.use(routes_default);
+  v1Router.use(routes_default2);
+  v1Router.use(routes_default3);
+  v1Router.use(routes_default4);
+  app2.use("/api/v1", v1Router);
   app2.use(errorHandler);
 }
 
-// src/services/socket.ts
+// src/socket/index.ts
+var import_socket3 = require("socket.io");
+init_logger();
+
+// src/shared/core/socket.ts
+init_logger();
 var SocketService = class {
   io = null;
   /**
@@ -1788,50 +2699,198 @@ var SocketService = class {
 };
 var socketService = new SocketService();
 
-// src/services/notification.ts
+// src/socket/auth.ts
+var import_node3 = require("better-auth/node");
+init_logger();
+var socketAuthMiddleware = async (socket, next) => {
+  logger_default.info("[Socket.io] New connection attempt");
+  const session = await auth.api.getSession({
+    headers: (0, import_node3.fromNodeHeaders)(socket.handshake.headers)
+  });
+  if (!session) {
+    logger_default.warn("[Socket.io] Unauthenticated connection attempt rejected");
+    return next(new Error("Authentication failed"));
+  }
+  socket.user = {
+    id: session.user.id,
+    name: session.user.name,
+    imageUrl: session.user.image || "",
+    email: session.user.email
+  };
+  logger_default.info(`[Socket.io] User authenticated: ${socket.user.id}`);
+  next();
+};
+
+// src/socket/messages.ts
+init_db();
+init_logger();
+init_services3();
+var registerMessageHandlers = (io2, socket) => {
+  socket.on("private message", async ({ content, to }) => {
+    io2.to(to).to(socket.user.id).emit("private message", {
+      ...content,
+      from: socket.user,
+      to
+    });
+    logger_default.info(`[Socket] Private message from ${socket.user.id} to ${to}`);
+    try {
+      const conversation = await findOrCreateConversation(socket.user.id, to);
+      if (!conversation) return;
+      const cohortMember = conversation.cohortMemberOne.profileId === socket.user.id ? conversation.cohortMemberOne : conversation.cohortMemberTwo;
+      await prisma.directMessage.create({
+        data: {
+          content: content.content || content,
+          conversationId: conversation.id,
+          cohortMemberId: cohortMember.id
+        }
+      });
+    } catch (err) {
+      logger_default.error("[Socket] Error saving private message:", err);
+    }
+  });
+  socket.on("markAsRead", async ({ senderId }) => {
+    try {
+      const receiverId = socket.user.id;
+      await prisma.directMessage.updateMany({
+        where: {
+          cohortMember: {
+            profileId: senderId
+          },
+          conversation: {
+            OR: [
+              { cohortMemberOneId: receiverId, cohortMemberTwoId: senderId },
+              { cohortMemberOneId: senderId, cohortMemberTwoId: receiverId }
+            ]
+          },
+          seen: false
+        },
+        data: {
+          seen: true
+        }
+      });
+      io2.to(senderId).emit("markAsRead", { senderId, receiverId });
+    } catch (error) {
+      logger_default.error("[Socket] Error marking messages as read:", error);
+    }
+  });
+};
+
+// src/socket/presence.ts
+init_db();
+init_logger();
+var registerPresenceHandlers = (io2, socket) => {
+  prisma.user.update({
+    where: { id: socket.user.id },
+    data: { isOnline: true }
+  }).catch(
+    (err) => logger_default.error(
+      `[Socket] Error updating online status for ${socket.user.id}:`,
+      err
+    )
+  );
+  const activeUsers = [];
+  for (let [id, socket2] of io2.of("/").sockets) {
+    activeUsers.push({
+      socketId: id,
+      ...socket2.handshake.auth
+    });
+  }
+  socket.emit("active-users", activeUsers);
+  socket.broadcast.emit("user connected", {
+    socketId: socket.id,
+    userData: { ...socket.handshake.auth }
+  });
+  socket.emit("session", {
+    user: socket.user
+  });
+  socket.on("typing", (to) => {
+    socket.broadcast.to(to).emit("broadcast typing", {});
+  });
+  socket.on("disconnect", async () => {
+    logger_default.info(`[Socket] Client disconnected: ${socket.id}`);
+    const userId = socket.user.id;
+    const matchingSockets = await io2.in(userId).fetchSockets();
+    const isStillConnected = matchingSockets.length > 0;
+    if (!isStillConnected) {
+      logger_default.info(
+        `[Socket] Last connection for user ${userId} closed. Marking offline.`
+      );
+      prisma.user.update({
+        where: { id: userId },
+        data: {
+          isOnline: false,
+          lastSeenAt: /* @__PURE__ */ new Date()
+        }
+      }).catch(
+        (err) => logger_default.error(
+          `[Socket] Error updating offline status for ${userId}:`,
+          err
+        )
+      );
+      socket.broadcast.emit("user disconnected", userId);
+    }
+  });
+};
+
+// src/socket/notifications.ts
+var registerNotificationHandlers = (io2, socket) => {
+  socket.on("notification", (arg) => {
+    socket.broadcast.to(arg.to).emit("notification", arg.notification);
+  });
+};
+
+// src/socket/rooms.ts
+init_logger();
+var registerRoomHandlers = (io2, socket) => {
+  socket.on("join-room", (room) => {
+    socket.join(room);
+    logger_default.info(`[Socket] User ${socket.user.id} joined room ${room}`);
+  });
+  socket.on("leave-room", (room) => {
+    socket.leave(room);
+    logger_default.info(`[Socket] User ${socket.user.id} left room ${room}`);
+  });
+};
+
+// src/core/messaging/events.ts
+init_events();
+
+// src/core/notifications/services.ts
+init_db();
 var NotificationService = class {
   /**
-   * Create a notification and emit it via socket
+   * Create a new notification
    */
   static async createNotification(payload) {
-    try {
-      const {
+    const {
+      type,
+      content,
+      senderId,
+      receiverId,
+      messageId,
+      channelId,
+      cohortId
+    } = payload;
+    const notification = await prisma.notification.create({
+      data: {
+        type,
+        content,
         senderId,
         receiverId,
         messageId,
         channelId,
-        serverId,
-        conversationId,
-        emoji,
-        ...rest
-      } = payload;
-      const notification = await prisma.notification.create({
-        data: {
-          ...rest,
-          sender: { connect: { id: senderId } },
-          receiver: { connect: { id: receiverId } },
-          messageId,
-          channelId,
-          serverId,
-          conversationId,
-          emoji
-        }
-      });
-      const receiverProfile = await prisma.profile.findUnique({
-        where: { id: receiverId }
-      });
-      if (receiverProfile) {
-        socketService.emitNotification(receiverProfile.userId, notification);
+        cohortId
+      },
+      include: {
+        sender: true
       }
-      return notification;
-    } catch (error) {
-      logger_default.error("[NotificationService] Error creating notification", error);
-      throw error;
-    }
+    });
+    socketService.emitNotification(receiverId, notification);
+    return notification;
   }
 };
 
-// src/utils/mention-parser.ts
+// src/shared/utils/mention-parser.ts
 function parseMentions(content) {
   const mentions = [];
   const mentionRegex = /@\[([^\]]+)\]\(([^)]+)\)/g;
@@ -1852,7 +2911,9 @@ function extractMentionedUserIds(content) {
   return uniqueIds;
 }
 
-// src/events/message.handler.ts
+// src/core/messaging/events.ts
+init_db();
+init_logger();
 events.on(MESSAGE_EVENTS.CREATED, async ({ message, type, contextId }) => {
   try {
     socketService.emitChatMessage(contextId, "messages", message);
@@ -1866,15 +2927,15 @@ events.on(MESSAGE_EVENTS.CREATED, async ({ message, type, contextId }) => {
           where: { id: message.channelId }
         });
         for (const profile of mentionedProfiles) {
-          if (profile.id !== message.member.profileId) {
+          if (profile.id !== message.cohortMember.profileId) {
             await NotificationService.createNotification({
               type: "MENTION",
               content: `mentioned you in #${channel?.name || "channel"}`,
-              senderId: message.member.profileId,
+              senderId: message.cohortMember.profileId,
               receiverId: profile.id,
               messageId: message.id,
               channelId: message.channelId,
-              serverId: channel?.serverId
+              cohortId: channel?.cohortId
             });
           }
         }
@@ -1907,10 +2968,57 @@ events.on(REACTION_EVENTS.REMOVED, async ({ reaction }) => {
   const roomId = reaction.messageId || reaction.directMessageId;
   socketService.emit("reaction:removed", { id: reaction.id }, roomId);
 });
+events.on(POLL_EVENTS.VOTED, async ({ poll }) => {
+  try {
+    const isChannel = !!poll.messageId;
+    const messageId = poll.messageId || poll.directMessageId;
+    if (!messageId) return;
+    let fullMessage;
+    if (isChannel) {
+      fullMessage = await prisma.message.findUnique({
+        where: { id: messageId },
+        include: {
+          cohortMember: { include: { profile: true } },
+          poll: {
+            include: {
+              options: {
+                include: {
+                  votes: true,
+                  _count: { select: { votes: true } }
+                }
+              }
+            }
+          }
+        }
+      });
+    } else {
+      fullMessage = await prisma.directMessage.findUnique({
+        where: { id: messageId },
+        include: {
+          cohortMember: { include: { profile: true } },
+          poll: {
+            include: {
+              options: {
+                include: {
+                  votes: true,
+                  _count: { select: { votes: true } }
+                }
+              }
+            }
+          }
+        }
+      });
+    }
+    if (fullMessage) {
+      const contextId = isChannel ? fullMessage.channelId : fullMessage.conversationId;
+      socketService.emitChatMessage(contextId, "messages:update", fullMessage);
+    }
+  } catch (error) {
+    logger_default.error("[MessageHandler] Error handling poll:voted", error);
+  }
+});
 
-// src/libs/socket.ts
-var import_socket3 = require("socket.io");
-var import_node3 = require("better-auth/node");
+// src/socket/index.ts
 var io;
 var initializeSocket = (httpServer2, allowedOrigins2, app2) => {
   io = new import_socket3.Server(httpServer2, {
@@ -1924,156 +3032,32 @@ var initializeSocket = (httpServer2, allowedOrigins2, app2) => {
   });
   socketService.initialize(io);
   app2.set("io", io);
-  io.use(async (socket, next) => {
-    logger_default.info("[Socket.io] New connection attempt");
-    const session = await auth.api.getSession({
-      headers: (0, import_node3.fromNodeHeaders)(socket.handshake.headers)
-    });
-    if (!session) {
-      logger_default.warn("[Socket.io] Unauthenticated connection attempt rejected");
-      return next(new Error("Authentication failed"));
-    }
-    socket.user = {
-      id: session.user.id,
-      name: session.user.name,
-      imageUrl: session.user.image || "",
-      email: session.user.email
-    };
-    logger_default.info(`[Socket.io] User authenticated: ${socket.user.id}`);
-    next();
-  });
+  io.use(socketAuthMiddleware);
   io.on("connection", (socket) => {
     logger_default.info(`[Socket.io] Client connected: ${socket.id}`);
     socket.join(socket.user?.id);
-    prisma.user.update({
-      where: { id: socket.user.id },
-      data: { isOnline: true }
-    }).catch(
-      (err) => logger_default.error(
-        `[Socket.io] Error updating online status for ${socket.user.id}:`,
-        err
-      )
-    );
-    socket.onAny((event, ...args) => {
-      logger_default.info(event, args);
-    });
-    const activeUsers = [];
-    for (let [id, socket2] of io.of("/").sockets) {
-      activeUsers.push({
-        socketId: id,
-        ...socket2.handshake.auth
+    if (process.env.NODE_ENV !== "production") {
+      socket.onAny((event, ...args) => {
+        logger_default.info(`[Socket Event] ${event}`, args);
       });
     }
-    socket.emit("active-users", activeUsers);
-    socket.broadcast.emit("user connected", {
-      socketId: socket.id,
-      userData: { ...socket.handshake.auth }
-    });
-    socket.emit("session", {
-      user: socket.user
-    });
-    socket.on("private message", async ({ content, to }) => {
-      io.to(to).to(socket.user.id).emit("private message", {
-        ...content,
-        from: socket.user,
-        to
-      });
-      logger_default.info(socket.user.id);
-      try {
-        const conversation = await findOrCreateConversation(socket.user.id, to);
-        if (!conversation) return;
-        const member = conversation.memberOne.profileId === socket.user.id ? conversation.memberOne : conversation.memberTwo;
-        await prisma.directMessage.create({
-          data: {
-            content: content.content || content,
-            // Handle both object and string
-            conversationId: conversation.id,
-            memberId: member.id
-          }
-        });
-      } catch (err) {
-        logger_default.error(err);
-      }
-    });
-    socket.on("markAsRead", async ({ senderId }) => {
-      try {
-        const receiverId = socket.user.id;
-        await prisma.directMessage.updateMany({
-          where: {
-            member: {
-              profileId: senderId
-            },
-            conversation: {
-              OR: [
-                { memberOneId: receiverId, memberTwoId: senderId },
-                { memberOneId: senderId, memberTwoId: receiverId }
-              ]
-            },
-            seen: false
-          },
-          data: {
-            seen: true
-          }
-        });
-        io.to(senderId).emit("markAsRead", { senderId, receiverId });
-      } catch (error) {
-        logger_default.error("\u274C Error marking messages as read:", error);
-      }
-    });
-    socket.on("typing", (to) => {
-      socket.broadcast.to(to).emit("broadcast typing", {});
-    });
-    const notifications = [];
-    socket.on("notification", (arg) => {
-      socket.broadcast.to(arg.to).emit("notification", arg.notification);
-    });
-    socket.on("notification-acknowledgment", (notificationId) => {
-    });
-    socket.on("join-room", (room) => {
-      socket.join(room);
-      logger_default.info(`[Socket.io] User ${socket.user.id} joined room ${room}`);
-    });
-    socket.on("leave-room", (room) => {
-      socket.leave(room);
-      logger_default.info(`[Socket.io] User ${socket.user.id} left room ${room}`);
-    });
-    socket.on("disconnect", async () => {
-      logger_default.info(`[Socket.io] Client disconnected: ${socket.id}`);
-      const userId = socket.user.id;
-      const matchingSockets = await io.in(userId).fetchSockets();
-      const isStillConnected = matchingSockets.length > 0;
-      if (!isStillConnected) {
-        logger_default.info(
-          `[Socket.io] Last connection for user ${userId} closed. Marking offline.`
-        );
-        try {
-          await prisma.user.update({
-            where: { id: userId },
-            data: {
-              isOnline: false,
-              lastSeenAt: /* @__PURE__ */ new Date()
-            }
-          });
-          socket.broadcast.emit("user disconnected", userId);
-        } catch (err) {
-          logger_default.error(
-            `[Socket.io] Error updating offline status for ${userId}:`,
-            err
-          );
-        }
-      }
-    });
+    registerMessageHandlers(io, socket);
+    registerPresenceHandlers(io, socket);
+    registerNotificationHandlers(io, socket);
+    registerRoomHandlers(io, socket);
   });
+  return io;
 };
 
 // src/config/app.ts
-var import_express10 = __toESM(require("express"), 1);
+var import_express6 = __toESM(require("express"), 1);
 var import_cors = __toESM(require("cors"), 1);
 var import_cookie_parser = __toESM(require("cookie-parser"), 1);
 var import_express_rate_limit = require("express-rate-limit");
+init_logger();
 var allowedOrigins = process.env.ALLOWED_ORIGINS ? process.env.ALLOWED_ORIGINS.split(",") : ["http://localhost:3000"];
 function createApp() {
-  const app2 = (0, import_express10.default)();
+  const app2 = (0, import_express6.default)();
   app2.set("trust proxy", 1);
   app2.use((0, import_cookie_parser.default)());
   app2.use(
@@ -2093,17 +3077,40 @@ function createApp() {
     logger_default.info(`[Request] ${req.method} ${req.url}`);
     next();
   });
-  const limiter = (0, import_express_rate_limit.rateLimit)({
+  const writeLimiter = (0, import_express_rate_limit.rateLimit)({
     windowMs: 15 * 60 * 1e3,
-    max: 1e3,
+    // 15 minutes
+    max: 500,
+    // 500 requests per 15 min
     standardHeaders: true,
-    legacyHeaders: false
+    legacyHeaders: false,
+    message: "Too many requests, please try again later."
   });
-  app2.use(limiter);
+  const readLimiter = (0, import_express_rate_limit.rateLimit)({
+    windowMs: 1 * 60 * 1e3,
+    // 1 minute
+    max: 100,
+    // 100 requests per minute
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: "Too many requests, please slow down."
+  });
+  app2.use((req, res, next) => {
+    if (req.path.includes("/link-preview")) {
+      return next();
+    }
+    if (req.method === "GET") {
+      readLimiter(req, res, next);
+    } else {
+      writeLimiter(req, res, next);
+    }
+  });
   return app2;
 }
 
 // src/config/shutdown.ts
+init_db();
+init_logger();
 function serverShutdown(httpServer2) {
   const shutdown = async (signal) => {
     logger_default.info(`

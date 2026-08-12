@@ -1,9 +1,9 @@
 import { vi, describe, it, expect, beforeEach } from "vitest";
-import { MessageService } from "@/services/message";
-import { prisma } from "@/core/db";
-import { MemberService } from "@/services/member";
-import { events } from "@/core/events";
-import { NotFoundError } from "@/utils/errors";
+import { MessageService } from "@/core/messaging/services";
+import { prisma } from "@/shared/core/db";
+import { MemberService } from "@/core/cohorts/services";
+import { events } from "@/shared/core/events";
+import { NotFoundError } from "@/shared/utils/errors";
 
 const MOCK_USER_ID = "507f1f77bcf86cd799439011";
 const MOCK_MEMBER_ID = "507f191e810c19729de860ea";
@@ -11,27 +11,31 @@ const MOCK_MESSAGE_ID = "60b8d2931234567890abcdef";
 const MOCK_SERVER_ID = "60b8d2931234567890fedcba";
 const MOCK_CHANNEL_ID = "60b8d2931234567890123456";
 
-vi.mock("@/core/db", () => ({
-  prisma: {
-    message: {
-      create: vi.fn(),
-      findFirst: vi.fn(),
-      update: vi.fn(),
+const { prismaMock } = vi.hoisted(() => {
+  return {
+    prismaMock: {
+      message: {
+        create: vi.fn(),
+        findFirst: vi.fn(),
+        update: vi.fn(),
+      },
+      directMessage: {
+        create: vi.fn(),
+        findFirst: vi.fn(),
+        update: vi.fn(),
+      },
+      cohortMember: {
+        findFirst: vi.fn(),
+      },
     },
-    directMessage: {
-      create: vi.fn(),
-      findFirst: vi.fn(),
-      update: vi.fn(),
-    },
-    member: {
-      findFirst: vi.fn(),
-    },
-  },
+  };
+});
+
+vi.mock("../../shared/core/db", () => ({
+  prisma: prismaMock,
 }));
 
-vi.mock("@/services/member");
-
-vi.mock("@/core/events", () => ({
+vi.mock("@/shared/core/events", () => ({
   events: {
     emit: vi.fn(),
   },
@@ -44,13 +48,15 @@ vi.mock("@/core/events", () => ({
 describe("MessageService", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+
+    vi.spyOn(MemberService, "resolveMember").mockResolvedValue(null);
   });
 
   describe("createChannelMessage", () => {
     it("should create a channel message successfully", async () => {
       const payload = {
         content: "Hello",
-        serverId: MOCK_SERVER_ID,
+        cohortId: MOCK_SERVER_ID,
         channelId: MOCK_CHANNEL_ID,
         userId: MOCK_USER_ID,
       };
@@ -60,24 +66,36 @@ describe("MessageService", () => {
         id: MOCK_MESSAGE_ID,
         content: "Hello",
         channelId: MOCK_CHANNEL_ID,
+        cohortMemberId: MOCK_MEMBER_ID,
+        cohortMember: {
+          id: MOCK_MEMBER_ID,
+          userId: MOCK_USER_ID,
+          profile: {
+            id: "profile-id",
+            name: "Test User",
+            imageUrl: "http://example.com/image.jpg",
+          },
+        },
       };
 
-      (MemberService.resolveMember as any).mockResolvedValue(mockMember);
-      (prisma.message.create as any).mockResolvedValue(mockMessage);
+      vi.spyOn(MemberService, "resolveMember").mockResolvedValue(
+        mockMember as any,
+      );
+      prismaMock.message.create.mockResolvedValue(mockMessage);
 
       const result = await MessageService.createChannelMessage(payload);
 
       expect(result).toEqual(mockMessage);
-      expect(prisma.message.create).toHaveBeenCalled();
+      expect(prismaMock.message.create).toHaveBeenCalled();
     });
 
-    it("should throw NotFoundError if member not found", async () => {
-      (MemberService.resolveMember as any).mockResolvedValue(null);
+    it("should throw NotFoundError if cohortMember not found", async () => {
+      vi.spyOn(MemberService, "resolveMember").mockResolvedValue(null);
 
       await expect(
         MessageService.createChannelMessage({
           content: "Hi",
-          serverId: MOCK_SERVER_ID,
+          cohortId: MOCK_SERVER_ID,
           channelId: MOCK_CHANNEL_ID,
           userId: MOCK_USER_ID,
         }),
@@ -90,13 +108,16 @@ describe("MessageService", () => {
       const mockMember = { id: MOCK_MEMBER_ID };
       const mockMessage = {
         id: MOCK_MESSAGE_ID,
-        memberId: MOCK_MEMBER_ID,
+        cohortMemberId: MOCK_MEMBER_ID,
         channelId: MOCK_CHANNEL_ID,
+        cohortMember: { userId: MOCK_USER_ID },
       };
 
-      (MemberService.resolveMember as any).mockResolvedValue(mockMember);
-      (prisma.message.findFirst as any).mockResolvedValue(mockMessage);
-      (prisma.message.update as any).mockResolvedValue({
+      vi.spyOn(MemberService, "resolveMember").mockResolvedValue(
+        mockMember as any,
+      );
+      prismaMock.message.findFirst.mockResolvedValue(mockMessage);
+      prismaMock.message.update.mockResolvedValue({
         ...mockMessage,
         content: "New",
       });
@@ -105,7 +126,7 @@ describe("MessageService", () => {
         messageId: MOCK_MESSAGE_ID,
         content: "New",
         userId: MOCK_USER_ID,
-        serverId: MOCK_SERVER_ID,
+        cohortId: MOCK_SERVER_ID,
       });
 
       expect(result.content).toBe("New");

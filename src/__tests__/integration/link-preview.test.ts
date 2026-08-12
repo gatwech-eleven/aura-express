@@ -22,13 +22,13 @@ describe("Link Preview Integration", () => {
 
   const authenticatedRequest = () =>
     request(app)
-      .get("/api/link-preview")
+      .get("/api/v1/link-preview")
       .set("x-internal-secret", TEST_INTERNAL_SECRET)
       .set("x-user-id", TEST_USER_ID);
 
   it("should return 401 without auth headers", async () => {
     const response = await request(app)
-      .get("/api/link-preview")
+      .get("/api/v1/link-preview")
       .query({ url: TEST_URL });
     expect(response.status).toBe(401);
   });
